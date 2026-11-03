@@ -1,0 +1,1424 @@
+/* resources/css/app.css */
+
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=DM+Sans:wght@400;500;700&display=swap');
+
+/* ─── CSS VARIABLES — EVERGREEN THEME ───────────────────────────────────── */
+:root {
+    /* Warm cream light mode */
+    --bg-primary: #F5F0E6;
+    --bg-secondary: #EDE6D6;
+    --bg-surface: #FBF8F1;
+    --bg-surface-hover: #EDE6D6;
+    --bg-card: #FBF8F1;
+    --bg-input: #FBF8F1;
+    --bg-table-stripe: #F5F0E6;
+
+    --text-primary: #1E1E1E;
+    --text-secondary: #3A3A35;
+    --text-tertiary: #6B6B60;
+    --text-inverse: #F5F0E6;
+
+    --border-color: #DDD3BC;
+    --border-light: #E8E0CE;
+
+    --shadow-color: rgba(24, 96, 73, 0.08);
+    --shadow-card: 0 1px 3px rgba(24, 96, 73, 0.08),
+        0 1px 2px rgba(24, 96, 73, 0.04);
+
+    /* Semantic colors — warm palette */
+    --success: #186049;
+    --success-bg: #DCEFE5;
+    --success-border: #B9DFC9;
+    --success-text: #0F4030;
+
+    --warning: #D9A441;
+    --warning-bg: #FBEFD2;
+    --warning-border: #F2DCA8;
+    --warning-text: #7A5A12;
+
+    --danger: #A63B31;
+    --danger-bg: #F8DFD9;
+    --danger-border: #EFC2B7;
+    --danger-text: #6E211A;
+
+    --info: #2E6E8E;
+    --info-bg: #DAEAF1;
+    --info-border: #B4D3E1;
+    --info-text: #1A4458;
+
+    /* PRIMARY = forest green */
+    --primary: #186049;
+    --primary-hover: #124A38;
+    --primary-bg: #DCEFE5;
+
+    /* Gold accent */
+    --accent: #D9A441;
+    --accent-hover: #C08F32;
+    --accent-light: #E8C876;
+    --accent-bg: #FBEFD2;
+
+    --font-family:
+        'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        sans-serif;
+    --font-display: 'Cormorant Garamond', Georgia, serif;
+
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-2xl: 32px;
+
+    /* HomePage tokens — light */
+    color-scheme: light;
+    --heading: #186049;
+    --logo: #186049;
+    --brand-text: #186049; /* labels, table headers, active tabs, links */
+    --gold: #D9A441;
+    --gold-text: #8A6212;
+    --btn-bg: #186049;
+    --btn-fg: #FFFFFF;
+    --btn-icon: #D9A441; /* icon colour on a --btn-bg surface */
+    --btn-shadow: rgba(24, 96, 73, 0.25);
+    --outline: #186049;
+    --toggle-border: #186049;
+    --toggle-fg: #186049;
+    --focus: #D9A441;
+    --focus-ring: rgba(217, 164, 65, 0.3);
+
+    /* Chart colours */
+    --chart-fuel: #186049;
+    --chart-parking: #D9A441;
+    --chart-danger: #A63B31;
+    --chart-label: #F5F0E6;
+}
+
+/* ─── DARK MODE — deep forest ───────────────────────────────────────────── */
+[data-theme='dark'] {
+    --bg-primary: #141311;
+    --bg-secondary: #1A1815;
+    --bg-surface: #211F1B;
+    --bg-surface-hover: #2B2823;
+    --bg-card: #211F1B;
+    --bg-input: #211F1B;
+    --bg-table-stripe: #1A1815;
+
+    --text-primary: #F5F0E6;
+    --text-secondary: #CFC9BC;
+    --text-tertiary: #968F80;
+    --text-inverse: #14110D;
+
+    --border-color: #3A362F;
+    --border-light: #2A2722;
+
+    --shadow-color: rgba(0, 0, 0, 0.5);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4),
+        0 1px 2px rgba(0, 0, 0, 0.3);
+
+    --success: #4FB083;
+    --success-bg: #173D2D;
+    --success-border: #22573E;
+    --success-text: #B9DFC9;
+
+    --warning: #E8B859;
+    --warning-bg: #3D2F12;
+    --warning-border: #5A4718;
+    --warning-text: #F2DCA8;
+
+    --danger: #E07B6E;
+    --danger-bg: #3D1C17;
+    --danger-border: #5C2A23;
+    --danger-text: #EFC2B7;
+
+    --info: #6FB3CE;
+    --info-bg: #142E3A;
+    --info-border: #1F4A5C;
+    --info-text: #B4D3E1;
+
+    --primary: #2F9A74;
+    --primary-hover: #3DB087;
+    --primary-bg: #173D2D;
+
+    --accent: #D9A441;
+    --accent-hover: #E8C876;
+    --accent-light: #B8872C;
+    --accent-bg: #3D2F12;
+
+    /* Dark: charcoal surfaces, forest buttons/selection, gold accents */
+    color-scheme: dark;
+    --heading: #F5F0E6;
+    --logo: #F5F0E6;
+    --brand-text: #D9A441;
+    --gold-text: #D9A441;
+    --btn-bg: #1B6E52;
+    --btn-fg: #F5F0E6;
+    --btn-icon: #D9A441;
+    --btn-shadow: rgba(52, 163, 123, 0.35);
+    --outline: #F5F0E6;
+    --toggle-border: #F5F0E6;
+    --toggle-fg: #F5F0E6;
+    --focus-ring: rgba(217, 164, 65, 0.35);
+
+    --chart-fuel: #34A37B;
+    --chart-danger: #E07B6E;
+    --chart-label: #14110D;
+}
+
+/* ─── BASE STYLES ──────────────────────────────────────────────────────── */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-family: var(--font-family);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition:
+        background-color 0.25s ease,
+        color 0.25s ease;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    transition:
+        background-color 0.25s ease,
+        color 0.25s ease;
+}
+
+/* ─── FOCUS (keyboard) — gold ring in both themes ──────────────────────── */
+a:focus-visible,
+button:focus-visible,
+[role='button']:focus-visible,
+.nav-item:focus-visible,
+.ant-btn:focus-visible,
+.ant-tabs-tab-btn:focus-visible {
+    outline: 3px solid var(--focus) !important;
+    outline-offset: 3px !important;
+}
+
+/* ─── SCROLLBAR ────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-surface);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-tertiary);
+}
+
+/* ─── SMOOTH SCROLLING ─────────────────────────────────────────────────── */
+html,
+.sidebar,
+.ant-modal-wrap,
+.ant-table-body,
+.ant-table-content {
+    scroll-behavior: smooth;
+}
+
+/* ─── SIDEBAR: scrollable but no visible scrollbar ──────────────────────── */
+.sidebar {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* old Edge */
+}
+
+.sidebar::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Edge */
+    width: 0;
+    height: 0;
+}
+
+/* ─── LAYOUT ───────────────────────────────────────────────────────────── */
+.app {
+    display: flex;
+    min-height: 100vh;
+    background-color: var(--bg-primary);
+}
+
+.main-content {
+    flex: 1;
+    margin-left: 240px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    background-color: var(--bg-primary);
+}
+
+.main-content.collapsed {
+    margin-left: 0px;
+}
+
+.content {
+    flex: 1;
+    padding: 32px 36px 48px;
+    max-width: 1440px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+/* ─── HEADER ───────────────────────────────────────────────────────────── */
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 32px;
+    background-color: var(--bg-surface);
+    border-bottom: 1px solid var(--border-color);
+    min-height: 72px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    transition:
+        background-color 0.25s ease,
+        border-color 0.25s ease;
+}
+
+.header-left h1 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--heading);
+    margin: 0;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+}
+
+.header-subtitle {
+    font-family: var(--font-family);
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.theme-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid var(--toggle-border);
+    background: transparent;
+    color: var(--toggle-fg);
+    font-size: 20px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.theme-toggle-btn:hover {
+    background: var(--bg-surface-hover);
+}
+
+.user-dropdown {
+    cursor: pointer;
+    padding: 4px 12px 4px 4px;
+    border-radius: 999px;
+    transition: background 0.2s ease;
+}
+
+.user-dropdown:hover {
+    background: var(--bg-surface-hover);
+}
+
+.user-info {
+    text-align: right;
+    margin-right: 4px;
+}
+
+.user-name {
+    font-family: var(--font-family);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.user-role {
+    font-family: var(--font-family);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    line-height: 1.2;
+}
+
+/* ─── HEADER — forest green in light mode ──────────────────────────────── */
+/* Variables are re-pointed inside the header so inline var(--…) styles in
+   Header.tsx (sound button, status dots, subtitle) flip to cream-on-green. */
+html:not([data-theme='dark']) .header {
+    background-color: #186049;
+    border-bottom-color: #124A38;
+    --primary: #F5F0E6;
+    --primary-bg: rgba(245, 240, 230, 0.16);
+    --text-tertiary: rgba(245, 240, 230, 0.72);
+    --bg-surface-hover: rgba(245, 240, 230, 0.14);
+    --toggle-border: #F5F0E6;
+    --toggle-fg: #F5F0E6;
+    --outline: #F5F0E6; /* default buttons (Notifications) */
+    --success: #8FE0B6;
+    --danger: #FFB4A8;
+}
+
+html:not([data-theme='dark']) .header-left h1 {
+    color: #F5F0E6;
+}
+
+html:not([data-theme='dark']) .header-subtitle {
+    color: rgba(245, 240, 230, 0.75);
+}
+
+html:not([data-theme='dark']) .header .user-name {
+    color: #F5F0E6;
+}
+
+/* Avatar: gold chip with a forest glyph */
+html:not([data-theme='dark']) .header .ant-avatar {
+    background: #D9A441 !important;
+    color: #186049 !important;
+}
+
+/* Unread badge: keep a solid red with a ring so it reads on green */
+html:not([data-theme='dark']) .header .ant-badge-count {
+    background: #A63B31 !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 0 0 2px #186049 !important;
+}
+
+/* ─── SIDEBAR ──────────────────────────────────────────────────────────── */
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 240px;
+    background-color: var(--bg-surface);
+    border-right: 1px solid var(--border-color);
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 100;
+    transition:
+        width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        background-color 0.25s ease,
+        border-color 0.25s ease;
+}
+
+.sidebar.collapsed {
+    width: 20px;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 20px;
+    border-bottom: 1px solid var(--border-color);
+    min-height: 72px;
+}
+
+.sidebar-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    overflow: hidden;
+    flex: 1;
+}
+
+.logo-icon {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+    border-radius: 50% 0 50% 0;
+    overflow: hidden;
+    background: #186049;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.logo-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.sidebar-header-left h2 {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--logo);
+    margin: 0;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+}
+
+.sidebar-header-left p {
+    font-family: var(--font-family);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin: 0;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.sidebar-toggle-btn {
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.sidebar-toggle-btn:hover {
+    background: var(--bg-surface-hover);
+    color: var(--brand-text);
+}
+
+.sidebar-nav {
+    padding: 16px 12px;
+}
+
+.sidebar-section {
+    margin-bottom: 24px;
+}
+
+.sidebar-section-title {
+    font-family: var(--font-family);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 0 12px;
+    margin-bottom: 8px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-family: var(--font-family);
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+    margin-bottom: 2px;
+}
+
+.nav-item:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+.nav-item.active {
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    font-weight: 600;
+}
+
+.nav-item.active .anticon {
+    color: var(--btn-icon);
+}
+
+.nav-item .anticon {
+    font-size: 18px;
+    min-width: 22px;
+    color: var(--text-tertiary);
+    transition: color 0.15s ease;
+}
+
+.nav-item:hover .anticon {
+    color: var(--text-primary);
+}
+
+.nav-item span,
+.sidebar-section-title,
+.sidebar-header-left h2,
+.sidebar-header-left p {
+    white-space: nowrap;
+}
+
+/* Inner content keeps its full width while the sidebar width animates,
+   so nothing re-wraps or jumps; the sidebar just clips it. */
+.sidebar-header,
+.sidebar-nav {
+    min-width: 239px;
+}
+
+/* ─── PAGE HEADER ──────────────────────────────────────────────────────── */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.page-title {
+    font-family: var(--font-display);
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--heading);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+}
+
+.page-description {
+    font-family: var(--font-family);
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin: 8px 0 0 0;
+    line-height: 1.6;
+    max-width: 640px;
+}
+
+/* ─── STAT CARDS ───────────────────────────────────────────────────────── */
+.stat-card {
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    transition: all 0.2s ease;
+    box-shadow: var(--shadow-card);
+    height: 100%;
+}
+
+.stat-card:hover {
+    box-shadow: 0 8px 24px var(--shadow-color);
+    transform: translateY(-2px);
+}
+
+.stat-card-primary .stat-card-icon {
+    color: #D9A441;
+    background: #186049;
+}
+.stat-card-success .stat-card-icon {
+    color: #F5F0E6;
+    background: var(--success);
+}
+.stat-card-warning .stat-card-icon {
+    color: #F5F0E6;
+    background: var(--accent);
+}
+.stat-card-danger .stat-card-icon {
+    color: #F5F0E6;
+    background: var(--danger);
+}
+.stat-card-secondary .stat-card-icon {
+    color: var(--brand-text);
+    background: var(--bg-surface-hover);
+}
+
+/* Dark: the semantic fills are light, so use dark glyphs for contrast */
+[data-theme='dark'] .stat-card-success .stat-card-icon,
+[data-theme='dark'] .stat-card-warning .stat-card-icon,
+[data-theme='dark'] .stat-card-danger .stat-card-icon {
+    color: #14110D;
+}
+
+.stat-card-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+/* ─── ANTD OVERRIDES ───────────────────────────────────────────────────── */
+
+/* Cards */
+.ant-card {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-xl) !important;
+    box-shadow: var(--shadow-card) !important;
+    transition:
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+
+.ant-card:hover {
+    box-shadow: 0 8px 24px var(--shadow-color) !important;
+}
+
+.ant-card-head {
+    background: var(--bg-card) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding: 20px 24px !important;
+    min-height: auto !important;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important;
+}
+
+.ant-card-head-title {
+    font-family: var(--font-display) !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    color: var(--heading) !important;
+    letter-spacing: -0.01em;
+}
+
+.ant-card-body {
+    padding: 24px !important;
+    color: var(--text-primary) !important;
+}
+
+/* Tables */
+.ant-table {
+    background: transparent !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-family) !important;
+}
+
+.ant-table-thead > tr > th {
+    background: var(--bg-secondary) !important;
+    color: var(--brand-text) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    font-weight: 700 !important;
+    font-size: 12px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 14px 16px !important;
+    font-family: var(--font-family) !important;
+}
+
+.ant-table-thead > tr > th::before {
+    display: none !important;
+}
+
+.ant-table-tbody > tr > td {
+    border-bottom: 1px solid var(--border-light) !important;
+    color: var(--text-primary) !important;
+    padding: 14px 16px !important;
+    font-family: var(--font-family) !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+    background: var(--bg-surface-hover) !important;
+}
+
+.ant-table-tbody > tr:nth-child(even) {
+    background: transparent !important;
+}
+
+.ant-table-pagination .ant-pagination-item {
+    background: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+    border-radius: 8px !important;
+}
+
+.ant-table-pagination .ant-pagination-item a {
+    color: var(--text-secondary) !important;
+    font-family: var(--font-family) !important;
+    font-weight: 500 !important;
+}
+
+.ant-table-pagination .ant-pagination-item-active {
+    border-color: var(--btn-bg) !important;
+    background: var(--btn-bg) !important;
+}
+
+.ant-table-pagination .ant-pagination-item-active a {
+    color: var(--btn-fg) !important;
+}
+
+/* Modal */
+.ant-modal-content {
+    background: var(--bg-surface) !important;
+    border-radius: var(--radius-xl) !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+.ant-modal-header {
+    background: var(--bg-surface) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding-bottom: 16px !important;
+    margin-bottom: 20px !important;
+}
+
+.ant-modal-title {
+    font-family: var(--font-display) !important;
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    color: var(--heading) !important;
+    letter-spacing: -0.01em;
+}
+
+.ant-modal-close {
+    color: var(--text-tertiary) !important;
+    top: 16px !important;
+    right: 16px !important;
+    border-radius: 50% !important;
+}
+
+.ant-modal-close:hover {
+    background: var(--bg-surface-hover) !important;
+    color: var(--brand-text) !important;
+}
+
+/* Form */
+.ant-form-item-label > label {
+    font-family: var(--font-family) !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: var(--brand-text) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.ant-input,
+.ant-input-number,
+.ant-select-selector,
+.ant-picker,
+.ant-input-affix-wrapper {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+    border-radius: var(--radius-md) !important;
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease !important;
+    font-family: var(--font-family) !important;
+}
+
+.ant-input:focus,
+.ant-input-number:focus,
+.ant-select-focused .ant-select-selector,
+.ant-picker:focus,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused {
+    border-color: var(--focus) !important;
+    box-shadow: 0 0 0 3px var(--focus-ring) !important;
+    background: var(--bg-card) !important;
+}
+
+.ant-input::placeholder,
+.ant-input-number::placeholder {
+    color: var(--text-tertiary) !important;
+    font-style: italic;
+}
+
+.ant-select-dropdown {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: 0 8px 24px var(--shadow-color) !important;
+}
+
+.ant-select-item {
+    color: var(--text-primary) !important;
+    font-family: var(--font-family) !important;
+}
+
+.ant-select-item:hover,
+.ant-select-item-option-active {
+    background: var(--bg-surface-hover) !important;
+}
+
+.ant-select-item-option-selected {
+    background: var(--primary-bg) !important;
+    color: var(--brand-text) !important;
+    font-weight: 600 !important;
+}
+
+/* Buttons */
+.ant-btn {
+    border-radius: 999px !important;
+    font-family: var(--font-family) !important;
+    font-weight: 600 !important;
+    padding: 6px 20px !important;
+    height: auto !important;
+    min-height: 36px;
+    transition: all 0.2s ease !important;
+    border-width: 2px !important;
+    box-shadow: none !important;
+}
+
+.ant-btn-primary {
+    background: var(--btn-bg) !important;
+    border-color: var(--btn-bg) !important;
+    color: var(--btn-fg) !important;
+    box-shadow: none !important;
+}
+
+.ant-btn-primary:hover {
+    background: var(--btn-bg) !important;
+    border-color: var(--btn-bg) !important;
+    color: var(--btn-fg) !important;
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px var(--btn-shadow) !important;
+}
+
+.ant-btn-primary:disabled {
+    background: var(--border-color) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-tertiary) !important;
+    transform: none !important;
+    filter: none !important;
+    box-shadow: none !important;
+}
+
+.ant-btn-default {
+    background: transparent !important;
+    border-color: var(--outline) !important;
+    color: var(--outline) !important;
+}
+
+.ant-btn-default:hover {
+    background: var(--bg-surface-hover) !important;
+    color: var(--outline) !important;
+    border-color: var(--outline) !important;
+}
+
+.ant-btn-danger {
+    background: transparent !important;
+    border-color: var(--danger) !important;
+    color: var(--danger) !important;
+}
+
+.ant-btn-danger:hover {
+    background: var(--danger) !important;
+    color: #fff !important;
+    border-color: var(--danger) !important;
+}
+
+.ant-btn-text {
+    color: var(--text-secondary) !important;
+    border-color: transparent !important;
+}
+
+.ant-btn-text:hover {
+    background: var(--bg-surface-hover) !important;
+    color: var(--brand-text) !important;
+}
+
+.ant-btn-link {
+    color: var(--brand-text) !important;
+    padding: 0 4px !important;
+    border-radius: 6px !important;
+    min-height: auto !important;
+}
+
+.ant-btn-sm.ant-btn-icon-only,
+.ant-btn-circle {
+    border-radius: 50% !important;
+    padding: 0 !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px;
+}
+
+.ant-btn-group .ant-btn {
+    border-radius: 0 !important;
+}
+
+.ant-btn-group .ant-btn:first-child {
+    border-radius: 999px 0 0 999px !important;
+}
+
+.ant-btn-group .ant-btn:last-child {
+    border-radius: 0 999px 999px 0 !important;
+}
+
+/* Tags */
+.ant-tag {
+    border-radius: 999px !important;
+    padding: 2px 12px !important;
+    font-family: var(--font-family) !important;
+    font-weight: 700 !important;
+    font-size: 11px !important;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    border-width: 1px !important;
+    line-height: 1.6 !important;
+}
+
+.ant-tag-success {
+    background: var(--success-bg) !important;
+    color: var(--success-text) !important;
+    border-color: var(--success-border) !important;
+}
+.ant-tag-warning {
+    background: var(--warning-bg) !important;
+    color: var(--warning-text) !important;
+    border-color: var(--warning-border) !important;
+}
+.ant-tag-error {
+    background: var(--danger-bg) !important;
+    color: var(--danger-text) !important;
+    border-color: var(--danger-border) !important;
+}
+.ant-tag-processing {
+    background: var(--info-bg) !important;
+    color: var(--info-text) !important;
+    border-color: var(--info-border) !important;
+}
+
+.ant-tag-blue {
+    background: var(--info-bg) !important;
+    color: var(--info-text) !important;
+    border-color: var(--info-border) !important;
+}
+.ant-tag-green {
+    background: var(--success-bg) !important;
+    color: var(--success-text) !important;
+    border-color: var(--success-border) !important;
+}
+.ant-tag-orange {
+    background: var(--warning-bg) !important;
+    color: var(--warning-text) !important;
+    border-color: var(--warning-border) !important;
+}
+.ant-tag-red {
+    background: var(--danger-bg) !important;
+    color: var(--danger-text) !important;
+    border-color: var(--danger-border) !important;
+}
+.ant-tag-purple {
+    background: #EBE0F2 !important;
+    color: #5E3284 !important;
+    border-color: #D3BDE2 !important;
+}
+
+[data-theme='dark'] .ant-tag-purple {
+    background: #2A1B38 !important;
+    color: #D3BDE2 !important;
+    border-color: #4A2D62 !important;
+}
+
+/* Tabs */
+.ant-tabs-tab {
+    font-family: var(--font-family) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    color: var(--text-secondary) !important;
+    padding: 10px 4px !important;
+}
+
+.ant-tabs-tab:hover {
+    color: var(--brand-text) !important;
+}
+
+.ant-tabs-tab-active .ant-tabs-tab-btn {
+    color: var(--brand-text) !important;
+    font-weight: 700 !important;
+}
+
+.ant-tabs-ink-bar {
+    background: var(--accent) !important;
+    height: 3px !important;
+    border-radius: 2px;
+}
+
+.ant-tabs-nav::before {
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+/* Dropdown */
+.ant-dropdown-menu {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: 0 8px 24px var(--shadow-color) !important;
+}
+
+.ant-dropdown-menu-item {
+    color: var(--text-primary) !important;
+    font-family: var(--font-family) !important;
+}
+
+.ant-dropdown-menu-item:hover {
+    background: var(--bg-surface-hover) !important;
+}
+
+/* Alert */
+.ant-alert {
+    border-radius: var(--radius-md) !important;
+    border-width: 1px !important;
+    font-family: var(--font-family) !important;
+}
+
+.ant-alert-success {
+    background: var(--success-bg) !important;
+    border-color: var(--success-border) !important;
+}
+
+.ant-alert-warning {
+    background: var(--warning-bg) !important;
+    border-color: var(--warning-border) !important;
+}
+
+.ant-alert-error {
+    background: var(--danger-bg) !important;
+    border-color: var(--danger-border) !important;
+}
+
+.ant-alert-info {
+    background: var(--info-bg) !important;
+    border-color: var(--info-border) !important;
+}
+
+/* Badge */
+.ant-badge-count {
+    background: var(--danger) !important;
+    font-family: var(--font-family) !important;
+    font-weight: 700 !important;
+    box-shadow: 0 2px 6px rgba(166, 59, 49, 0.35) !important;
+}
+
+/* Progress */
+.ant-progress-inner {
+    background: var(--bg-surface-hover) !important;
+}
+
+/* Divider */
+.ant-divider {
+    border-color: var(--border-color) !important;
+}
+
+/* Popover */
+.ant-popover-inner {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: 0 8px 24px var(--shadow-color) !important;
+}
+
+.ant-popover-title {
+    font-family: var(--font-display) !important;
+    font-weight: 700 !important;
+    color: var(--heading) !important;
+    font-size: 18px !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+/* Descriptions */
+.ant-descriptions-item-label {
+    background: var(--bg-secondary) !important;
+    color: var(--brand-text) !important;
+    font-weight: 700 !important;
+    font-family: var(--font-family) !important;
+    font-size: 12px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.ant-descriptions-item-content {
+    background: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-family) !important;
+}
+
+.ant-descriptions-bordered .ant-descriptions-view {
+    border-color: var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    overflow: hidden;
+}
+
+.ant-descriptions-bordered .ant-descriptions-row {
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+/* List */
+.ant-list-item {
+    color: var(--text-primary) !important;
+    border-bottom-color: var(--border-light) !important;
+}
+
+/* Timeline */
+.ant-timeline-item-content {
+    color: var(--text-primary) !important;
+    font-family: var(--font-family) !important;
+}
+
+/* Statistic */
+.ant-statistic-title {
+    font-family: var(--font-family) !important;
+    font-size: 11px !important;
+    color: var(--text-tertiary) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.ant-statistic-content {
+    font-family: var(--font-display) !important;
+    font-weight: 700 !important;
+}
+
+/* Switch */
+.ant-switch-checked {
+    background: var(--btn-bg) !important;
+}
+
+/* Radio Group */
+.ant-radio-button-wrapper {
+    border-radius: 999px !important;
+    border: 2px solid var(--border-color) !important;
+    font-family: var(--font-family) !important;
+    font-weight: 600 !important;
+    color: var(--text-secondary) !important;
+    padding: 0 16px !important;
+}
+
+.ant-radio-button-wrapper-checked {
+    background: var(--btn-bg) !important;
+    border-color: var(--btn-bg) !important;
+    color: var(--btn-fg) !important;
+}
+
+.ant-radio-button-wrapper-checked::before {
+    display: none !important;
+}
+
+.ant-radio-group-solid
+    .ant-radio-button-wrapper-checked:not(
+        .ant-radio-button-wrapper-disabled
+    ) {
+    color: var(--btn-fg) !important;
+}
+
+/* Slider */
+.ant-slider-track {
+    background: var(--btn-bg) !important;
+}
+
+.ant-slider-handle::after {
+    box-shadow: 0 0 0 2px var(--brand-text) !important;
+}
+
+/* Pagination */
+.ant-pagination-item-active {
+    border-color: var(--btn-bg) !important;
+    background: var(--btn-bg) !important;
+}
+
+.ant-pagination-item-active a {
+    color: var(--btn-fg) !important;
+}
+
+/* Empty */
+.ant-empty-description {
+    color: var(--text-tertiary) !important;
+    font-family: var(--font-family) !important;
+}
+
+/* Page Loading */
+.page-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 60vh;
+    background: var(--bg-primary);
+}
+
+/* Spin */
+.ant-spin-dot-item {
+    background: var(--brand-text) !important;
+}
+
+.ant-spin-text {
+    color: var(--text-secondary) !important;
+    font-family: var(--font-family) !important;
+}
+
+/* ─── RESPONSIVE ───────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 0 !important;
+        border-right: none;
+    }
+
+    .sidebar.collapsed {
+        width: 0 !important;
+    }
+
+    .main-content {
+        margin-left: 0 !important;
+    }
+
+    .main-content.collapsed {
+        margin-left: 0 !important;
+    }
+
+    .content {
+        padding: 20px;
+    }
+
+    .header {
+        padding: 12px 20px;
+    }
+
+    .header-left h1 {
+        font-size: 18px;
+    }
+
+    .header-subtitle {
+        font-size: 10px;
+    }
+
+    .page-title {
+        font-size: 32px;
+    }
+
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .content {
+        padding: 24px 28px;
+    }
+}
+
+/* ─── ANIMATIONS ───────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* ─── SIDEBAR — Hover Expand / Pin Support ─────────────────────────────── */
+.sidebar {
+    transition:
+        width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 0.35s ease,
+        background-color 0.25s ease,
+        border-color 0.25s ease;
+    will-change: width;
+}
+
+/* Small delay before closing so a quick mouse slip doesn't flicker it */
+.sidebar.collapsed {
+    transition:
+        width 0.35s cubic-bezier(0.4, 0, 0.2, 1) 0.12s,
+        box-shadow 0.35s ease 0.12s,
+        background-color 0.25s ease,
+        border-color 0.25s ease;
+}
+
+.sidebar:not(.collapsed) {
+    box-shadow: 4px 0 16px rgba(24, 96, 73, 0.06);
+}
+
+[data-theme='dark'] .sidebar:not(.collapsed) {
+    box-shadow: 4px 0 18px rgba(0, 0, 0, 0.4);
+}
+
+.sidebar.pinned:not(.collapsed) {
+    border-right: 2px solid var(--btn-bg);
+}
+
+.sidebar.collapsed .nav-item span,
+.sidebar.collapsed .sidebar-section-title,
+.sidebar.collapsed .sidebar-header h2,
+.sidebar.collapsed .sidebar-header p {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.sidebar .nav-item span,
+.sidebar .sidebar-section-title,
+.sidebar .sidebar-header h2,
+.sidebar .sidebar-header p {
+    opacity: 1;
+    transition: opacity 0.15s ease 0.05s;
+}
+
+.sidebar.pinned .sidebar-toggle-btn {
+    color: var(--brand-text);
+    background: var(--primary-bg);
+    border-radius: 8px;
+}
+
+.sidebar .sidebar-toggle-btn {
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+}
+
+.sidebar .sidebar-toggle-btn:hover {
+    background: var(--bg-surface-hover);
+}
+
+/* ─── PRINT STYLES ─────────────────────────────────────────────────────── */
+@media print {
+    .sidebar,
+    .header,
+    .ant-btn,
+    .ant-table-pagination {
+        display: none !important;
+    }
+
+    .main-content {
+        margin-left: 0 !important;
+    }
+
+    .content {
+        padding: 16px !important;
+    }
+
+    .ant-table {
+        background: white !important;
+    }
+
+    .ant-table-thead > tr > th {
+        background: #f5f0e6 !important;
+        color: #186049 !important;
+    }
+
+    .ant-table-tbody > tr > td {
+        color: #1e1e1e !important;
+    }
+}
+
+/* ─── REDUCED MOTION ───────────────────────────────────────────────────── */
+/* Only the decorative motion is removed; the sidebar slide stays animated. */
+@media (prefers-reduced-motion: reduce) {
+    .fade-in {
+        animation: none;
+    }
+
+    .stat-card:hover,
+    .ant-btn-primary:hover {
+        transform: none !important;
+    }
+}

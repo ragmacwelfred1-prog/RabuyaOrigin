@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "dc33cdc3-5ed5-4fd0-b046-b279565141e0"
+      }
+    },
+    "android": {
+      "package": "com.welfred.back_end"
+    }
+  }
+}
