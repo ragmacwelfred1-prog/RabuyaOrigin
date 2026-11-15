@@ -1384,8 +1384,8 @@ const ParkingSlots: React.FC = () => {
                                 message: 'Please enter slot number',
                             },
                             {
-                                pattern: /^[AB]-\d{1,3}$/i,
-                                message: 'Use the format A-01 or B-01',
+                                pattern: /^[AB]-?\d{1,3}$/i,
+                                message: 'Use the format A01, A-01, B01, or B-01',
                             },
                             { max: 10, message: 'Cannot exceed 10 characters' },
                         ]}
