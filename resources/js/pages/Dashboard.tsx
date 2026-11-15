@@ -542,7 +542,8 @@ const Dashboard: React.FC = () => {
                                         fontSize: 28,
                                         fontWeight: 700,
                                         color: 'var(--success)',
-                                        fontFamily: 'var(--font-display)',
+                                        fontFamily: 'var(--font-numeric)',
+                                        fontVariantNumeric: 'tabular-nums lining-nums',
                                     }}
                                 >
                                     {formatCurrency(
@@ -569,7 +570,8 @@ const Dashboard: React.FC = () => {
                                         fontSize: 28,
                                         fontWeight: 700,
                                         color: 'var(--danger)',
-                                        fontFamily: 'var(--font-display)',
+                                        fontFamily: 'var(--font-numeric)',
+                                        fontVariantNumeric: 'tabular-nums lining-nums',
                                     }}
                                 >
                                     {formatCurrency(fuelProfit.total_cost || 0)}
@@ -599,7 +601,8 @@ const Dashboard: React.FC = () => {
                                                     0) >= 0
                                                     ? 'var(--success)'
                                                     : 'var(--danger)',
-                                            fontFamily: 'var(--font-display)',
+                                            fontFamily: 'var(--font-numeric)',
+                                            fontVariantNumeric: 'tabular-nums lining-nums',
                                         }}
                                     >
                                         {formatCurrency(
@@ -669,7 +672,8 @@ const Dashboard: React.FC = () => {
                                         fontWeight: 700,
                                         color: 'var(--primary)',
                                         lineHeight: 1.1,
-                                        fontFamily: 'var(--font-display)',
+                                        fontFamily: 'var(--font-numeric)',
+                                        fontVariantNumeric: 'tabular-nums lining-nums',
                                     }}
                                 >
                                     {totalSlots}
@@ -727,7 +731,8 @@ const Dashboard: React.FC = () => {
                                         fontWeight: 700,
                                         color: 'var(--success)',
                                         lineHeight: 1.1,
-                                        fontFamily: 'var(--font-display)',
+                                        fontFamily: 'var(--font-numeric)',
+                                        fontVariantNumeric: 'tabular-nums lining-nums',
                                     }}
                                 >
                                     {formatCurrency(totalParkingRevenue)}
@@ -785,7 +790,8 @@ const Dashboard: React.FC = () => {
                                         fontWeight: 700,
                                         color: 'var(--text-primary)',
                                         lineHeight: 1.1,
-                                        fontFamily: 'var(--font-display)',
+                                        fontFamily: 'var(--font-numeric)',
+                                        fontVariantNumeric: 'tabular-nums lining-nums',
                                     }}
                                 >
                                     {products.length}
@@ -843,7 +849,8 @@ const Dashboard: React.FC = () => {
                                         fontWeight: 700,
                                         color: 'var(--accent)',
                                         lineHeight: 1.1,
-                                        fontFamily: 'var(--font-display)',
+                                        fontFamily: 'var(--font-numeric)',
+                                        fontVariantNumeric: 'tabular-nums lining-nums',
                                     }}
                                 >
                                     {formatCurrency(
