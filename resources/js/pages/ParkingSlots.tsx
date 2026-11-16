@@ -214,7 +214,7 @@ const ParkingSlots: React.FC = () => {
 
     // ─── Real-Time Status Check ─────────────────────────────────────────────────
 
-    const getRealStatus = (
+        const getRealStatus = (
         slot: ParkingSlot,
     ): 'available' | 'occupied' | 'maintenance' => {
         if (slot.status === 'maintenance') {
@@ -237,7 +237,8 @@ const ParkingSlots: React.FC = () => {
 
         const hasBookingToday = bookings.some((booking) => {
             if (booking.parking_slot_id !== slot.id) return false;
-            if (!['pending', 'approved'].includes(booking.status)) return false;
+            // ✅ FIX: pending bookings don't occupy the slot until approved
+            if (booking.status !== 'approved') return false;
 
             const checkIn = dayjs(booking.check_in_date);
             const checkOut = dayjs(booking.check_out_date);

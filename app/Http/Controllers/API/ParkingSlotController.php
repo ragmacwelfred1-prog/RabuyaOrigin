@@ -131,7 +131,7 @@ public function getAvailable()
                     'confirmedBy',
                 ])
                 ->where('parking_slot_id', $id)
-                ->whereIn('status', ['pending', 'approved'])
+                ->where('status', 'approved') 
                 ->orderBy('check_in_date', 'asc')
                 ->get()
                 ->filter(function ($b) use ($today) {

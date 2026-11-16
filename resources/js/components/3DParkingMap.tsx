@@ -143,11 +143,14 @@ const seeded = (id: number, salt = 1): number => {
 };
 
 // Geometry constants shared by layout + scene
-const SLOT_W = 1.6;
-const SLOT_L = 2.8;
+// Bays are perpendicular to the aisle:
+//   SLOT_W = bay depth (along X, reaching toward the aisle)
+//   SLOT_L = bay width (along Z, along the lane)
+const SLOT_W = 2.8;
+const SLOT_L = 1.6;
 const AISLE_W = 2.4;
 const SLOT_MARGIN = 0.4;
-const ROW_SPACING = 3.0;
+const ROW_SPACING = 1.9;
 
 // Lazily-built hazard-stripe texture for maintenance bays (client only)
 let hazardTexture: THREE.CanvasTexture | null = null;
@@ -189,6 +192,7 @@ const CAR_SPECS: Record<
     hatch: { len: 1.95, h: 0.5, cabLen: 1.15, cabH: 0.46, cabZ: -0.18 },
 };
 
+// The car's FRONT points toward +Z in local space.
 const Car: React.FC<{
     color?: string;
     kind?: CarKind;
@@ -520,8 +524,13 @@ const ParkingSlotBox: React.FC<{
     const kind: CarKind = (['sedan', 'suv', 'hatch'] as CarKind[])[
         Math.floor(seeded(slot.id, 3) * 3)
     ];
-    const yaw = (seeded(slot.id, 5) - 0.5) * 0.1;
-    const offsetX = (seeded(slot.id, 7) - 0.5) * 0.25;
+
+    // Cars face the aisle: left bays (A) look toward +X, right bays (B) toward -X.
+    // (The car's front is local +Z; rotating by +90° turns it to +X.)
+    const baseYaw = side === 'left' ? Math.PI / 2 : -Math.PI / 2;
+    const yaw = baseYaw + (seeded(slot.id, 5) - 0.5) * 0.1;
+    // Small sideways nudge along the lane (Z) so cars don't look cloned
+    const offsetZ = (seeded(slot.id, 7) - 0.5) * 0.25;
 
     // Pulse "available" bays so free spots pop out on a busy lot
     useFrame(({ clock }) => {
@@ -596,7 +605,7 @@ const ParkingSlotBox: React.FC<{
                 </Plane>
             )}
 
-            {/* Painted bay lines (open toward the aisle, like a real bay) */}
+            {/* Painted bay lines */}
             {[
                 [SLOT_W, lineThickness, 0, SLOT_L / 2 - lineThickness / 2],
                 [SLOT_W, lineThickness, 0, -SLOT_L / 2 + lineThickness / 2],
@@ -648,17 +657,17 @@ const ParkingSlotBox: React.FC<{
                     color={carColor}
                     kind={kind}
                     rotationY={yaw}
-                    position={[offsetX, 0.06, 0]}
+                    position={[0, 0.06, offsetZ]}
                     opacity={opacity}
                 />
             )}
 
             {slot.status === 'maintenance' && !dimmed && (
                 <>
-                    <TrafficCone position={[-0.5, 0.06, 1.0]} />
-                    <TrafficCone position={[0.5, 0.06, 1.0]} />
-                    <TrafficCone position={[-0.5, 0.06, -1.0]} />
-                    <TrafficCone position={[0.5, 0.06, -1.0]} />
+                    <TrafficCone position={[-1.1, 0.06, 0.55]} />
+                    <TrafficCone position={[1.1, 0.06, 0.55]} />
+                    <TrafficCone position={[-1.1, 0.06, -0.55]} />
+                    <TrafficCone position={[1.1, 0.06, -0.55]} />
                 </>
             )}
 
@@ -1328,7 +1337,7 @@ export const ParkingMap3D: React.FC<Props> = ({
     // Entrance sits at the FRONT of the lot; slots grow away from it (−Z).
     const gateFrontZ = 2.5;
     const gateBackZ = -6.6;
-    const startZ = -8.5;
+    const startZ = -8.0;
 
     const totalRows = Math.max(finalLeft.length, finalRight.length, 1);
     const endZ = startZ - (totalRows - 1) * spacingZ;
@@ -1336,10 +1345,14 @@ export const ParkingMap3D: React.FC<Props> = ({
     const rowsSpan = Math.abs(startZ - endZ);
 
     const lotFront = gateFrontZ;
-    const lotBack = endZ - slotLength / 2 - 1.5;
+    const lotBack = endZ - slotLength / 2 - 0.6;
     const lotLen = lotFront - lotBack;
     const lotCenterZ = (lotFront + lotBack) / 2;
     const lotHalfW = rightStartX + slotWidth / 2 + 1.0;
+
+    // Drive aisle runs from the gate's back edge to the lot's back edge — exactly.
+    const aisleLen = Math.max(0.1, gateBackZ - lotBack);
+    const aisleCz = (gateBackZ + lotBack) / 2;
 
     // Sun / moon hang low over the horizon behind the lot so they are
     // visible from the default overview camera.
@@ -1432,7 +1445,7 @@ export const ParkingMap3D: React.FC<Props> = ({
         setFocusedSlotId(slot.id);
 
         if (slot.status === 'available') {
-            // ✅ Go straight to booking
+            // Go straight to booking
             openCheckinForSlot(slot);
             return;
         }
@@ -1452,6 +1465,7 @@ export const ParkingMap3D: React.FC<Props> = ({
             );
         }
     };
+
     // ─── Check-in helpers ───────────────────────────────────────────────────
     const openCheckinForSlot = (slot: ParkingSlot) => {
         if (slot.status !== 'available') {
@@ -1985,10 +1999,10 @@ export const ParkingMap3D: React.FC<Props> = ({
                         <meshStandardMaterial color="#9CA3AF" roughness={0.8} />
                     </Box>
 
-                    {/* Drive aisle */}
+                    {/* Drive aisle: from the gate's back edge to lotBack, exactly */}
                     <Box
-                        args={[walkwayWidth, 0.02, lotLen - 3.5]}
-                        position={[0, 0.01, (gateBackZ + lotBack) / 2]}
+                        args={[walkwayWidth, 0.02, aisleLen]}
+                        position={[0, 0.01, aisleCz]}
                         receiveShadow
                     >
                         <meshStandardMaterial color={sky.aisle} roughness={0.85} />
@@ -1998,12 +2012,8 @@ export const ParkingMap3D: React.FC<Props> = ({
                     {[-1, 1].map((s) => (
                         <Box
                             key={`edge-${s}`}
-                            args={[0.08, 0.02, lotLen - 3.5]}
-                            position={[
-                                s * (walkwayWidth / 2),
-                                0.025,
-                                (gateBackZ + lotBack) / 2,
-                            ]}
+                            args={[0.08, 0.02, aisleLen]}
+                            position={[s * (walkwayWidth / 2), 0.025, aisleCz]}
                         >
                             <meshBasicMaterial color="#E5E7EB" />
                         </Box>
@@ -2011,7 +2021,7 @@ export const ParkingMap3D: React.FC<Props> = ({
 
                     {/* Aisle centre dashes */}
                     {Array.from({
-                        length: Math.max(0, Math.floor((gateBackZ - lotBack) / 1.4)),
+                        length: Math.max(0, Math.floor((aisleLen - 0.6) / 1.4)),
                     }).map((_, i) => (
                         <Box
                             key={`cdash-${i}`}
