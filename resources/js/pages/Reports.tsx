@@ -1,5 +1,6 @@
 // resources/js/pages/Reports.tsx
 import React, { useState, useEffect, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import {
     Card,
     Row,
@@ -7,26 +8,19 @@ import {
     Button,
     DatePicker,
     Select,
-    Table,
     message,
     Space,
-    Statistic,
     Spin,
-    Empty,
-    Tag,
+    Pagination,
 } from 'antd';
 import {
     FileExcelOutlined,
     PrinterOutlined,
-    DollarOutlined,
     CarOutlined,
     FireOutlined,
     ReloadOutlined,
     DownloadOutlined,
     FileTextOutlined,
-    RiseOutlined,
-    FallOutlined,
-    ShoppingOutlined,
     CheckCircleOutlined,
     CalendarOutlined,
     CreditCardOutlined,
@@ -36,6 +30,8 @@ import api from '../services/api';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
+
+const PAGE_SIZE = 10;
 
 const COLORS = {
     primary: '#186049',
@@ -67,6 +63,51 @@ const fmtPct = (n?: number | null): string => {
     if (n === undefined || n === null) return '0.0%';
     return `${n.toFixed(1)}%`;
 };
+
+// ─── Paginated wrapper (10 rows per page for every report table) ─────────────
+//
+// Renders the table via a render-prop with only the current page's rows.
+// When `printing` is true, all rows are shown and the pager is hidden so the
+// printed / PDF report is complete.
+
+function Paginated<T>({
+    rows,
+    printing,
+    children,
+}: {
+    rows: T[];
+    printing: boolean;
+    children: (visibleRows: T[]) => React.ReactNode;
+}) {
+    const [page, setPage] = useState(1);
+    const maxPage = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    const current = Math.min(page, maxPage);
+
+    const visible = printing
+        ? rows
+        : rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+
+    return (
+        <>
+            {children(visible)}
+            {!printing && rows.length > PAGE_SIZE && (
+                <div className="report-pager">
+                    <Pagination
+                        size="small"
+                        current={current}
+                        pageSize={PAGE_SIZE}
+                        total={rows.length}
+                        showSizeChanger={false}
+                        onChange={(p) => setPage(p)}
+                        showTotal={(total, range) =>
+                            `${range[0]}–${range[1]} of ${total}`
+                        }
+                    />
+                </div>
+            )}
+        </>
+    );
+}
 
 // ─── Report Data Shape ───────────────────────────────────────────────────────
 
@@ -102,6 +143,8 @@ const Reports: React.FC = () => {
     const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
     const [loading, setLoading] = useState<boolean>(false);
     const [reportData, setReportData] = useState<ReportData | null>(null);
+    const [reportKey, setReportKey] = useState<number>(0); // resets every table's page on new report
+    const [printing, setPrinting] = useState<boolean>(false);
 
     const [fuelProducts, setFuelProducts] = useState<{ id: number; type: string }[]>([]);
     const [fuelProductId, setFuelProductId] = useState<number | undefined>(undefined);
@@ -110,6 +153,18 @@ const Reports: React.FC = () => {
         api.get('/fuel-products')
             .then((r) => setFuelProducts(Array.isArray(r.data) ? r.data : []))
             .catch(() => setFuelProducts([]));
+    }, []);
+
+    // While printing (button OR Ctrl+P), show ALL rows instead of just page 1
+    useEffect(() => {
+        const before = () => flushSync(() => setPrinting(true));
+        const after = () => setPrinting(false);
+        window.addEventListener('beforeprint', before);
+        window.addEventListener('afterprint', after);
+        return () => {
+            window.removeEventListener('beforeprint', before);
+            window.removeEventListener('afterprint', after);
+        };
     }, []);
 
     const generateReport = async () => {
@@ -132,6 +187,7 @@ const Reports: React.FC = () => {
             });
             if (response.data) {
                 setReportData(response.data);
+                setReportKey((k) => k + 1);
                 message.success('Report generated successfully');
             } else {
                 message.warning('No data found');
@@ -309,6 +365,7 @@ const Reports: React.FC = () => {
 
         const { summary, transactions, date_range } = reportData;
         const [start, end] = date_range ? [date_range.start, date_range.end] : ['', ''];
+        const showCost = reportType !== 'parking';
 
         let csv = '';
         csv += '"PARK & FUEL MANAGEMENT SYSTEM"\n';
@@ -325,8 +382,10 @@ const Reports: React.FC = () => {
 
         csv += '"EXECUTIVE SUMMARY"\n';
         csv += `"Total Revenue",${(summary.total_revenue || 0).toFixed(2)}\n`;
-        csv += `"Total Cost",${(summary.total_cost || 0).toFixed(2)}\n`;
-        csv += `"Total Profit",${(summary.total_profit || 0).toFixed(2)}\n`;
+        if (showCost) {
+            csv += `"Total Cost",${(summary.total_cost || 0).toFixed(2)}\n`;
+            csv += `"Total Profit",${(summary.total_profit || 0).toFixed(2)}\n`;
+        }
         csv += `"Total Transactions",${summary.total_transactions || 0}\n`;
         csv += `"Avg. per Transaction",${(summary.average_transaction || 0).toFixed(2)}\n`;
         csv += `"Daily Average Revenue",${analysis.dailyAvgRev.toFixed(2)}\n`;
@@ -335,8 +394,6 @@ const Reports: React.FC = () => {
         if (analysis.parkingTxs.length > 0) {
             csv += '"PARKING OPERATIONS"\n';
             csv += `"Parking Revenue",${(summary.parking_revenue || 0).toFixed(2)}\n`;
-            csv += `"Parking Cost",${(summary.parking_cost || 0).toFixed(2)}\n`;
-            csv += `"Parking Profit",${(summary.parking_profit || 0).toFixed(2)}\n`;
             csv += `"Parking Transactions",${summary.parking_transactions || 0}\n`;
             csv += `"Total Nights",${summary.total_parking_nights || 0}\n`;
             csv += `"Avg. Nights per Booking",${analysis.avgNights.toFixed(2)}\n\n`;
@@ -369,7 +426,7 @@ const Reports: React.FC = () => {
             csv += '"Product Breakdown"\n';
             csv += 'Product,Transactions,Liters,Revenue,Cost,Profit,Margin\n';
             analysis.productBreakdown.forEach((p) => {
-                const margin = p.cost > 0 ? (p.profit / p.cost) * 100 : 0;
+                const margin = p.revenue > 0 ? (p.profit / p.revenue) * 100 : 0;
                 csv += `"${p.product}",${p.txns},${p.liters.toFixed(2)},${p.revenue.toFixed(2)},${p.cost.toFixed(2)},${p.profit.toFixed(2)},${margin.toFixed(1)}%\n`;
             });
             csv += '\n';
@@ -377,16 +434,25 @@ const Reports: React.FC = () => {
 
         if (analysis.dailyBreakdown.length > 0) {
             csv += '"DAILY REVENUE TREND"\n';
-            csv += 'Date,Transactions,Revenue,Cost,Profit\n';
+            csv += showCost
+                ? 'Date,Transactions,Revenue,Cost,Profit\n'
+                : 'Date,Transactions,Revenue\n';
             analysis.dailyBreakdown.forEach((d) => {
-                csv += `"${d.date}",${d.txns},${d.revenue.toFixed(2)},${d.cost.toFixed(2)},${d.profit.toFixed(2)}\n`;
+                csv += showCost
+                    ? `"${d.date}",${d.txns},${d.revenue.toFixed(2)},${d.cost.toFixed(2)},${d.profit.toFixed(2)}\n`
+                    : `"${d.date}",${d.txns},${d.revenue.toFixed(2)}\n`;
             });
             csv += '\n';
         }
 
         csv += '"TRANSACTION DETAILS"\n';
-        csv +=
-            'Transaction #,Type,Customer/Product,Quantity,Date,Time,Payment,Paid,Change,Cost,Profit,Amount\n';
+        if (reportType === 'fuel') {
+            csv +=
+                'Transaction #,Type,Customer/Product,Quantity,Date,Time,Payment,Paid,Change,Cost,Profit,Amount\n';
+        } else {
+            csv +=
+                'Transaction #,Type,Customer/Product,Quantity,Date,Time,Payment,Paid,Change,Amount\n';
+        }
         transactions.forEach((t: any) => {
             const txnNum = (t.transaction_number || 'N/A').replace(/,/g, '');
             const type = t.type === 'parking' ? 'Parking' : 'Fuel';
@@ -429,7 +495,11 @@ const Reports: React.FC = () => {
                 ).toFixed(2);
             }
             const amount = (t.total_amount || 0).toFixed(2);
-            csv += `"${txnNum}","${type}","${details}","${quantity}","${date}","${time}","${payment}",${paid},${change},${cost},${profit},${amount}\n`;
+            if (reportType === 'fuel') {
+                csv += `"${txnNum}","${type}","${details}","${quantity}","${date}","${time}","${payment}",${paid},${change},${cost},${profit},${amount}\n`;
+            } else {
+                csv += `"${txnNum}","${type}","${details}","${quantity}","${date}","${time}","${payment}",${paid},${change},${amount}\n`;
+            }
         });
 
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -445,323 +515,8 @@ const Reports: React.FC = () => {
         message.success('CSV downloaded successfully (open with Excel)');
     };
 
+    // beforeprint listener switches to "show all rows" mode automatically
     const printReport = () => window.print();
-
-    // ─── Table columns (screen view) ───────────────────────────────────────
-
-    const parkingColumns = [
-        {
-            title: 'Txn #',
-            dataIndex: 'transaction_number',
-            key: 'transaction_number',
-            width: 130,
-            render: (text: string) => <span className="mono">{text}</span>,
-        },
-        {
-            title: 'Customer',
-            key: 'customer',
-            width: 150,
-            render: (_: any, r: any) =>
-                r.customer ? `${r.customer.first_name} ${r.customer.last_name}` : 'N/A',
-        },
-        { title: 'Slot', dataIndex: 'slot_number', key: 'slot_number', align: 'center' as const, width: 70 },
-        {
-            title: 'Check-In',
-            dataIndex: 'check_in_date',
-            key: 'check_in_date',
-            width: 110,
-            render: (d: string) => (d ? dayjs(d).format('MMM DD, YYYY') : '-'),
-        },
-        {
-            title: 'Check-Out',
-            dataIndex: 'check_out_date',
-            key: 'check_out_date',
-            width: 110,
-            render: (d: string) => (d ? dayjs(d).format('MMM DD, YYYY') : '-'),
-        },
-        {
-            title: 'Nights',
-            dataIndex: 'nights_stayed',
-            key: 'nights',
-            align: 'center' as const,
-            width: 70,
-            render: (n: number) => n || 1,
-        },
-        {
-            title: 'Payment',
-            dataIndex: 'payment_method',
-            key: 'payment_method',
-            align: 'center' as const,
-            width: 90,
-            render: (m: string) => (m || 'cash').toUpperCase(),
-        },
-        {
-            title: 'Paid',
-            dataIndex: 'amount_paid',
-            key: 'amount_paid',
-            align: 'right' as const,
-            width: 100,
-            render: (a: number) => fmtPHP(a),
-        },
-        {
-            title: 'Change',
-            dataIndex: 'change_amount',
-            key: 'change_amount',
-            align: 'right' as const,
-            width: 90,
-            render: (c: number) => fmtPHP(c),
-        },
-        {
-            title: 'Amount',
-            dataIndex: 'total_amount',
-            key: 'amount',
-            align: 'right' as const,
-            width: 110,
-            render: (a: number) => <span className="amount-strong">{fmtPHP(a)}</span>,
-        },
-    ];
-
-    const fuelColumns = [
-        {
-            title: 'Txn #',
-            dataIndex: 'transaction_number',
-            key: 'transaction_number',
-            width: 130,
-            render: (text: string) => <span className="mono">{text}</span>,
-        },
-        {
-            title: 'Date',
-            dataIndex: 'date',
-            key: 'date',
-            width: 110,
-            render: (d: string) => (d ? dayjs(d).format('MMM DD, YYYY') : '-'),
-        },
-        {
-            title: 'Time',
-            dataIndex: 'time',
-            key: 'time',
-            width: 80,
-            render: (t: string) => (t ? dayjs(`2000-01-01 ${t}`).format('h:mm A') : '-'),
-        },
-        {
-            title: 'Product',
-            key: 'product',
-            width: 110,
-            render: (_: any, r: any) => r.fuel_product?.type || 'N/A',
-        },
-        {
-            title: 'Liters',
-            dataIndex: 'liters',
-            key: 'liters',
-            align: 'right' as const,
-            width: 90,
-            render: (l: number) => `${fmtNum(l)} L`,
-        },
-        {
-            title: 'Price/L',
-            dataIndex: 'price_per_liter',
-            key: 'price_per_liter',
-            align: 'right' as const,
-            width: 90,
-            render: (p: number) => fmtPHP(p),
-        },
-        {
-            title: 'Cost/L',
-            key: 'cost_per_liter',
-            align: 'right' as const,
-            width: 90,
-            render: (_: any, r: any) => {
-                const cost = Number(r.cost_price_per_liter ?? 0);
-                return cost > 0 ? fmtPHP(cost) : '—';
-            },
-        },
-        {
-            title: 'Cost',
-            key: 'cost',
-            align: 'right' as const,
-            width: 100,
-            render: (_: any, r: any) => {
-                const cost = Number(r.total_cost ?? 0);
-                return cost > 0 ? <span className="text-danger">{fmtPHP(cost)}</span> : '—';
-            },
-        },
-        {
-            title: 'Profit',
-            key: 'profit',
-            align: 'right' as const,
-            width: 100,
-            render: (_: any, r: any) => {
-                const cost = Number(r.total_cost ?? 0);
-                const profit = Number(r.profit ?? Number(r.total_amount ?? 0) - cost);
-                if (cost <= 0) return '—';
-                return (
-                    <span className={profit >= 0 ? 'text-success' : 'text-danger'}>
-                        {fmtPHP(profit)}
-                    </span>
-                );
-            },
-        },
-        {
-            title: 'Payment',
-            dataIndex: 'payment_method',
-            key: 'payment_method',
-            align: 'center' as const,
-            width: 80,
-            render: (m: string) => (m || 'cash').toUpperCase(),
-        },
-        {
-            title: 'Paid',
-            dataIndex: 'amount_paid',
-            key: 'amount_paid',
-            align: 'right' as const,
-            width: 100,
-            render: (a: number) => fmtPHP(a),
-        },
-        {
-            title: 'Change',
-            dataIndex: 'change_amount',
-            key: 'change_amount',
-            align: 'right' as const,
-            width: 90,
-            render: (c: number) => fmtPHP(c),
-        },
-        {
-            title: 'Amount',
-            dataIndex: 'total_amount',
-            key: 'total',
-            align: 'right' as const,
-            width: 110,
-            render: (a: number) => <span className="amount-strong">{fmtPHP(a)}</span>,
-        },
-    ];
-
-    const combinedColumns = [
-        {
-            title: 'Txn #',
-            dataIndex: 'transaction_number',
-            key: 'transaction_number',
-            width: 130,
-            render: (text: string) => <span className="mono">{text}</span>,
-        },
-        {
-            title: 'Type',
-            dataIndex: 'type',
-            key: 'type',
-            align: 'center' as const,
-            width: 90,
-            render: (t: string) => (
-                <span className={t === 'parking' ? 'type-parking' : 'type-fuel'}>
-                    {t === 'parking' ? 'PARKING' : 'FUEL'}
-                </span>
-            ),
-        },
-        {
-            title: 'Customer / Product',
-            key: 'details',
-            width: 170,
-            render: (_: any, r: any) => {
-                if (r.type === 'parking') {
-                    return r.customer
-                        ? `${r.customer.first_name} ${r.customer.last_name}`
-                        : 'N/A';
-                }
-                return r.fuel_product?.type || 'N/A';
-            },
-        },
-        {
-            title: 'Qty',
-            key: 'quantity',
-            align: 'right' as const,
-            width: 90,
-            render: (_: any, r: any) =>
-                r.type === 'parking'
-                    ? `${r.nights_stayed || 1} night${(r.nights_stayed || 1) > 1 ? 's' : ''}`
-                    : `${fmtNum(r.liters)} L`,
-        },
-        {
-            title: 'Date & Time',
-            key: 'datetime',
-            width: 150,
-            render: (_: any, r: any) => {
-                const d = r.type === 'parking' ? r.date ?? r.check_in_date : r.date;
-                if (!d) return '-';
-                return (
-                    <div style={{ lineHeight: 1.3 }}>
-                        <div>{dayjs(d).format('MMM DD, YYYY')}</div>
-                        {r.time && (
-                            <div className="text-tertiary">
-                                {dayjs(`2000-01-01 ${r.time}`).format('h:mm A')}
-                            </div>
-                        )}
-                    </div>
-                );
-            },
-        },
-        {
-            title: 'Cost',
-            key: 'cost',
-            align: 'right' as const,
-            width: 100,
-            render: (_: any, r: any) => {
-                const cost = Number(r.total_cost ?? 0);
-                return cost > 0 ? (
-                    <span className="text-danger">{fmtPHP(cost)}</span>
-                ) : (
-                    '—'
-                );
-            },
-        },
-        {
-            title: 'Profit',
-            key: 'profit',
-            align: 'right' as const,
-            width: 100,
-            render: (_: any, r: any) => {
-                const cost = Number(r.total_cost ?? 0);
-                const profit =
-                    cost > 0
-                        ? Number(r.profit ?? Number(r.total_amount ?? 0) - cost)
-                        : Number(r.profit ?? r.total_amount ?? 0);
-                return (
-                    <span className={profit >= 0 ? 'text-success' : 'text-danger'}>
-                        {fmtPHP(profit)}
-                    </span>
-                );
-            },
-        },
-        {
-            title: 'Payment',
-            dataIndex: 'payment_method',
-            key: 'payment_method',
-            align: 'center' as const,
-            width: 80,
-            render: (m: string) => (m || 'cash').toUpperCase(),
-        },
-        {
-            title: 'Paid',
-            dataIndex: 'amount_paid',
-            key: 'amount_paid',
-            align: 'right' as const,
-            width: 100,
-            render: (a: number) => fmtPHP(a),
-        },
-        {
-            title: 'Change',
-            dataIndex: 'change_amount',
-            key: 'change_amount',
-            align: 'right' as const,
-            width: 90,
-            render: (c: number) => fmtPHP(c),
-        },
-        {
-            title: 'Amount',
-            dataIndex: 'total_amount',
-            key: 'amount',
-            align: 'right' as const,
-            width: 110,
-            render: (a: number) => <span className="amount-strong">{fmtPHP(a)}</span>,
-        },
-    ];
 
     const getTransactionsForTable = () => {
         if (!reportData) return [];
@@ -770,12 +525,6 @@ const Reports: React.FC = () => {
         if (reportType === 'fuel')
             return reportData.transactions.filter((t: any) => t.type === 'fuel');
         return reportData.transactions;
-    };
-
-    const getTableColumns = () => {
-        if (reportType === 'parking') return parkingColumns;
-        if (reportType === 'fuel') return fuelColumns;
-        return combinedColumns;
     };
 
     const reportTypeLabel =
@@ -789,10 +538,16 @@ const Reports: React.FC = () => {
     const hasFuel = s?.fuel_revenue !== undefined;
     const hasParking = s?.parking_revenue !== undefined;
 
+    // Cost / profit are only shown when fuel is part of the report
+    const showCost = reportType !== 'parking';
+
+    // Margin = profit / revenue
     const profitMargin =
-        s?.total_cost && s.total_cost > 0 && s.total_profit !== undefined
-            ? (s.total_profit / s.total_cost) * 100
+        s?.total_revenue && s.total_revenue > 0 && s.total_profit !== undefined
+            ? (s.total_profit / s.total_revenue) * 100
             : null;
+
+    const tableRows = getTransactionsForTable();
 
     return (
         <div>
@@ -804,7 +559,7 @@ const Reports: React.FC = () => {
                     border-radius: 12px;
                     padding: 32px;
                     max-width: 1100px;
-                    margin: 0 auto;
+                    margin: 0 auto 24px;
                 }
 
                 .report-letterhead {
@@ -901,7 +656,16 @@ const Reports: React.FC = () => {
                     margin-top: 4px;
                 }
 
+                /* ─── Pager (screen only) ─── */
+                .report-pager {
+                    display: flex;
+                    justify-content: flex-end;
+                    margin-top: 12px;
+                }
+
                 /* ─── Data tables ─── */
+                .report-table-wrap { overflow-x: auto; }
+
                 .report-table,
                 .report-mini-table {
                     width: 100%;
@@ -956,7 +720,6 @@ const Reports: React.FC = () => {
                     border-bottom: 2px solid var(--border-color);
                 }
 
-                /* ✅ Alignment classes — always win because they target the <td> */
                 .report-table th.num,
                 .report-table td.num,
                 .report-mini-table th.num,
@@ -974,7 +737,6 @@ const Reports: React.FC = () => {
                     white-space: nowrap;
                 }
 
-                /* Footer / totals */
                 .report-table tfoot td,
                 .report-mini-table tfoot td {
                     padding: 10px;
@@ -994,7 +756,6 @@ const Reports: React.FC = () => {
                     white-space: nowrap;
                 }
 
-                /* Color helpers — MUST go inside a <span> so they don't fight <td> alignment */
                 .mono {
                     font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
                     font-size: 11px;
@@ -1039,6 +800,7 @@ const Reports: React.FC = () => {
                         background: #FFFFFF;
                         color: #000000;
                     }
+                    .report-pager { display: none !important; }
                     .report-document {
                         border: none;
                         padding: 0;
@@ -1090,837 +852,8 @@ const Reports: React.FC = () => {
                 }
             `}</style>
 
-            {/* ═══ PRINTABLE REPORT ════════════════════════════════════════ */}
-            {reportData && analysis && s && (
-                <div id="printable-report" className="report-document">
-                    {/* Letterhead */}
-                    <div className="report-letterhead">
-                        <div className="report-company">PARK &amp; FUEL MANAGEMENT SYSTEM</div>
-                        <div className="report-company-sub">
-                            Parking &amp; Fuel Operations Report
-                        </div>
-                        <div className="report-title">
-                            {reportTypeLabel}
-                            {reportType === 'fuel' && fuelProductId
-                                ? ` — ${fuelProducts.find((p) => p.id === fuelProductId)?.type}`
-                                : ''}
-                        </div>
-                        <div className="report-meta-line">
-                            <div>
-                                <strong>Reporting Period:</strong>{' '}
-                                {reportData.date_range.start} to {reportData.date_range.end}{' '}
-                                ({analysis.dayCount} day{analysis.dayCount === 1 ? '' : 's'})
-                            </div>
-                            <div>
-                                <strong>Generated:</strong>{' '}
-                                {dayjs().format('MMMM D, YYYY [at] h:mm A')}
-                            </div>
-                            <div>
-                                <strong>Report ID:</strong>{' '}
-                                <span className="mono">
-                                    RPT-{dayjs().format('YYYYMMDD-HHmmss')}-
-                                    {reportType.toUpperCase()}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* ═══ EXECUTIVE SUMMARY ═══ */}
-                    <div className="report-section">
-                        <div className="report-section-header">
-                            <CheckCircleOutlined className="report-section-icon" />
-                            <span className="report-section-title">Executive Summary</span>
-                        </div>
-
-                        <div className="report-kpi-grid">
-                            <div className="report-kpi">
-                                <div className="report-kpi-label">Total Revenue</div>
-                                <div className="report-kpi-value success">
-                                    {fmtPHP(s.total_revenue)}
-                                </div>
-                                <div className="report-kpi-sub">
-                                    {s.total_transactions} transactions
-                                </div>
-                            </div>
-                            <div className="report-kpi">
-                                <div className="report-kpi-label">Total Cost</div>
-                                <div className="report-kpi-value danger">
-                                    {fmtPHP(s.total_cost ?? 0)}
-                                </div>
-                                <div className="report-kpi-sub">Cost of goods sold</div>
-                            </div>
-                            <div className="report-kpi">
-                                <div className="report-kpi-label">Net Profit</div>
-                                <div className="report-kpi-value primary">
-                                    {fmtPHP(s.total_profit ?? 0)}
-                                </div>
-                                <div className="report-kpi-sub">
-                                    {profitMargin !== null
-                                        ? `${fmtPct(profitMargin)} margin`
-                                        : 'Margin n/a'}
-                                </div>
-                            </div>
-                            <div className="report-kpi">
-                                <div className="report-kpi-label">Avg. Transaction</div>
-                                <div className="report-kpi-value">
-                                    {fmtPHP(s.average_transaction)}
-                                </div>
-                                <div className="report-kpi-sub">Per sale</div>
-                            </div>
-                            <div className="report-kpi">
-                                <div className="report-kpi-label">Daily Average</div>
-                                <div className="report-kpi-value">
-                                    {fmtPHP(analysis.dailyAvgRev)}
-                                </div>
-                                <div className="report-kpi-sub">
-                                    Over {analysis.dayCount} day
-                                    {analysis.dayCount === 1 ? '' : 's'}
-                                </div>
-                            </div>
-                            <div className="report-kpi">
-                                <div className="report-kpi-label">Change Given</div>
-                                <div className="report-kpi-value warning">
-                                    {fmtPHP(analysis.totalChange)}
-                                </div>
-                                <div className="report-kpi-sub">Total cash returned</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* ═══ PARKING SECTION ═══ */}
-                    {hasParking && analysis.parkingTxs.length > 0 && (
-                        <div className="report-section">
-                            <div className="report-section-header">
-                                <CarOutlined className="report-section-icon" />
-                                <span className="report-section-title">Parking Operations</span>
-                            </div>
-
-                            <div className="report-kpi-grid">
-                                <div className="report-kpi">
-                                    <div className="report-kpi-label">Parking Revenue</div>
-                                    <div className="report-kpi-value success">
-                                        {fmtPHP(s.parking_revenue)}
-                                    </div>
-                                    <div className="report-kpi-sub">
-                                        {s.parking_transactions || 0} transactions
-                                    </div>
-                                </div>
-                                <div className="report-kpi">
-                                    <div className="report-kpi-label">Total Nights</div>
-                                    <div className="report-kpi-value">
-                                        {fmtNum(s.total_parking_nights || 0)}
-                                    </div>
-                                    <div className="report-kpi-sub">Accommodated</div>
-                                </div>
-                                <div className="report-kpi">
-                                    <div className="report-kpi-label">Avg. Nights / Booking</div>
-                                    <div className="report-kpi-value">
-                                        {analysis.avgNights.toFixed(2)}
-                                    </div>
-                                    <div className="report-kpi-sub">Stay duration</div>
-                                </div>
-                                <div className="report-kpi">
-                                    <div className="report-kpi-label">Parking Profit</div>
-                                    <div className="report-kpi-value primary">
-                                        {fmtPHP(s.parking_profit ?? s.parking_revenue ?? 0)}
-                                    </div>
-                                    <div className="report-kpi-sub">Net contribution</div>
-                                </div>
-                            </div>
-
-                            {analysis.slotBreakdown.length > 0 && (
-                                <div style={{ marginTop: 16 }}>
-                                    <div
-                                        style={{
-                                            fontSize: 11,
-                                            fontWeight: 800,
-                                            textTransform: 'uppercase',
-                                            letterSpacing: 0.8,
-                                            color: 'var(--text-secondary)',
-                                            marginBottom: 8,
-                                        }}
-                                    >
-                                        Slot Performance
-                                    </div>
-                                    <table className="report-mini-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Slot</th>
-                                                <th className="num">Transactions</th>
-                                                <th className="num">Nights</th>
-                                                <th className="num">Revenue</th>
-                                                <th className="num">% Share</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {analysis.slotBreakdown.map((row) => {
-                                                const pct =
-                                                    (s.parking_revenue || 0) > 0
-                                                        ? (row.revenue / s.parking_revenue!) * 100
-                                                        : 0;
-                                                return (
-                                                    <tr key={row.slot}>
-                                                        <td>
-                                                            <strong>{row.slot}</strong>
-                                                        </td>
-                                                        <td className="num">{row.txns}</td>
-                                                        <td className="num">{row.nights}</td>
-                                                        <td className="num">
-                                                            <span className="text-success">
-                                                                {fmtPHP(row.revenue)}
-                                                            </span>
-                                                        </td>
-                                                        <td className="num">{fmtPct(pct)}</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* ═══ FUEL SECTION ═══ */}
-                    {hasFuel && analysis.fuelTxs.length > 0 && (
-                        <div className="report-section">
-                            <div className="report-section-header">
-                                <FireOutlined className="report-section-icon" />
-                                <span className="report-section-title">Fuel Operations</span>
-                            </div>
-
-                            <div className="report-kpi-grid">
-                                <div className="report-kpi">
-                                    <div className="report-kpi-label">Fuel Revenue</div>
-                                    <div className="report-kpi-value success">
-                                        {fmtPHP(s.fuel_revenue)}
-                                    </div>
-                                    <div className="report-kpi-sub">
-                                        {s.fuel_transactions || 0} transactions
-                                    </div>
-                                </div>
-                                <div className="report-kpi">
-                                    <div className="report-kpi-label">Liters Sold</div>
-                                    <div className="report-kpi-value">
-                                        {fmtNum(s.total_liters_sold || 0)} L
-                                    </div>
-                                    <div className="report-kpi-sub">
-                                        Avg {analysis.avgLiters.toFixed(2)} L/sale
-                                    </div>
-                                </div>
-                                <div className="report-kpi">
-                                    <div className="report-kpi-label">Fuel Cost</div>
-                                    <div className="report-kpi-value danger">
-                                        {fmtPHP(s.fuel_cost ?? 0)}
-                                    </div>
-                                    <div className="report-kpi-sub">Purchased</div>
-                                </div>
-                                <div className="report-kpi">
-                                    <div className="report-kpi-label">Fuel Profit</div>
-                                    <div className="report-kpi-value primary">
-                                        {fmtPHP(s.fuel_profit ?? 0)}
-                                    </div>
-                                    <div className="report-kpi-sub">
-                                        {s.fuel_cost && s.fuel_cost > 0
-                                            ? `${fmtPct(((s.fuel_profit ?? 0) / s.fuel_cost) * 100)} margin`
-                                            : 'Margin n/a'}
-                                    </div>
-                                </div>
-                                {analysis.peakHour !== null && (
-                                    <div className="report-kpi">
-                                        <div className="report-kpi-label">Peak Hour</div>
-                                        <div className="report-kpi-value">
-                                            {analysis.peakHour}:00
-                                        </div>
-                                        <div className="report-kpi-sub">
-                                            {analysis.peakCount} sales
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {analysis.productBreakdown.length > 0 && (
-                                <div style={{ marginTop: 16 }}>
-                                    <div
-                                        style={{
-                                            fontSize: 11,
-                                            fontWeight: 800,
-                                            textTransform: 'uppercase',
-                                            letterSpacing: 0.8,
-                                            color: 'var(--text-secondary)',
-                                            marginBottom: 8,
-                                        }}
-                                    >
-                                        Product Performance
-                                    </div>
-                                    <table className="report-mini-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Product</th>
-                                                <th className="num">Txn</th>
-                                                <th className="num">Liters</th>
-                                                <th className="num">Revenue</th>
-                                                <th className="num">Cost</th>
-                                                <th className="num">Profit</th>
-                                                <th className="num">Margin</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {analysis.productBreakdown.map((row) => {
-                                                const margin =
-                                                    row.cost > 0
-                                                        ? (row.profit / row.cost) * 100
-                                                        : 0;
-                                                return (
-                                                    <tr key={row.product}>
-                                                        <td>
-                                                            <strong>{row.product}</strong>
-                                                        </td>
-                                                        <td className="num">{row.txns}</td>
-                                                        <td className="num">
-                                                            {fmtNum(row.liters)}
-                                                        </td>
-                                                        <td className="num">
-                                                            <span className="text-success">
-                                                                {fmtPHP(row.revenue)}
-                                                            </span>
-                                                        </td>
-                                                        <td className="num">
-                                                            <span className="text-danger">
-                                                                {fmtPHP(row.cost)}
-                                                            </span>
-                                                        </td>
-                                                        <td className="num">
-                                                            <span
-                                                                className={
-                                                                    row.profit >= 0
-                                                                        ? 'text-success'
-                                                                        : 'text-danger'
-                                                                }
-                                                            >
-                                                                {fmtPHP(row.profit)}
-                                                            </span>
-                                                        </td>
-                                                        <td className="num">{fmtPct(margin)}</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                        <tfoot>
-                                            <tr>
-                                                <td>TOTAL</td>
-                                                <td className="num">
-                                                    {analysis.productBreakdown.reduce(
-                                                        (sum, p) => sum + p.txns,
-                                                        0,
-                                                    )}
-                                                </td>
-                                                <td className="num">
-                                                    {fmtNum(
-                                                        analysis.productBreakdown.reduce(
-                                                            (sum, p) => sum + p.liters,
-                                                            0,
-                                                        ),
-                                                    )}
-                                                </td>
-                                                <td className="num">
-                                                    {fmtPHP(
-                                                        analysis.productBreakdown.reduce(
-                                                            (sum, p) => sum + p.revenue,
-                                                            0,
-                                                        ),
-                                                    )}
-                                                </td>
-                                                <td className="num">
-                                                    {fmtPHP(
-                                                        analysis.productBreakdown.reduce(
-                                                            (sum, p) => sum + p.cost,
-                                                            0,
-                                                        ),
-                                                    )}
-                                                </td>
-                                                <td className="num">
-                                                    {fmtPHP(
-                                                        analysis.productBreakdown.reduce(
-                                                            (sum, p) => sum + p.profit,
-                                                            0,
-                                                        ),
-                                                    )}
-                                                </td>
-                                                <td className="num">—</td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* ═══ PAYMENT METHOD BREAKDOWN ═══ */}
-                    <div className="report-section">
-                        <div className="report-section-header">
-                            <CreditCardOutlined className="report-section-icon" />
-                            <span className="report-section-title">
-                                Payment Method Breakdown
-                            </span>
-                        </div>
-
-                        <table className="report-mini-table">
-                            <thead>
-                                <tr>
-                                    <th>Payment Method</th>
-                                    <th className="num">Transactions</th>
-                                    <th className="num">Revenue</th>
-                                    <th className="num">% Share</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {Object.entries(
-                                    analysis.paymentBreakdown(reportData.transactions),
-                                ).map(([method, stats]) => {
-                                    const pct =
-                                        (s.total_revenue || 0) > 0
-                                            ? (stats.amount / s.total_revenue) * 100
-                                            : 0;
-                                    return (
-                                        <tr key={method}>
-                                            <td>
-                                                <strong>{method.toUpperCase()}</strong>
-                                            </td>
-                                            <td className="num">{stats.count}</td>
-                                            <td className="num">
-                                                <span className="text-success">
-                                                    {fmtPHP(stats.amount)}
-                                                </span>
-                                            </td>
-                                            <td className="num">{fmtPct(pct)}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* ═══ DAILY REVENUE TREND ═══ */}
-                    {analysis.dailyBreakdown.length > 0 && (
-                        <div className="report-section">
-                            <div className="report-section-header">
-                                <CalendarOutlined className="report-section-icon" />
-                                <span className="report-section-title">
-                                    Daily Revenue Trend
-                                </span>
-                            </div>
-
-                            <table className="report-mini-table">
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th className="num">Transactions</th>
-                                        <th className="num">Revenue</th>
-                                        <th className="num">Cost</th>
-                                        <th className="num">Profit</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {analysis.dailyBreakdown.map((d) => (
-                                        <tr key={d.date}>
-                                            <td>
-                                                {dayjs(d.date).format(
-                                                    'ddd, MMM DD, YYYY',
-                                                )}
-                                            </td>
-                                            <td className="num">{d.txns}</td>
-                                            <td className="num">
-                                                <span className="text-success">
-                                                    {fmtPHP(d.revenue)}
-                                                </span>
-                                            </td>
-                                            <td className="num">
-                                                {d.cost > 0 ? (
-                                                    <span className="text-danger">
-                                                        {fmtPHP(d.cost)}
-                                                    </span>
-                                                ) : (
-                                                    '—'
-                                                )}
-                                            </td>
-                                            <td className="num">
-                                                <span
-                                                    className={
-                                                        d.profit >= 0
-                                                            ? 'text-success'
-                                                            : 'text-danger'
-                                                    }
-                                                >
-                                                    {fmtPHP(d.profit)}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                                <tfoot>
-                                    <tr>
-                                        <td>TOTAL</td>
-                                        <td className="num">
-                                            {analysis.dailyBreakdown.reduce(
-                                                (sum, d) => sum + d.txns,
-                                                0,
-                                            )}
-                                        </td>
-                                        <td className="num">
-                                            {fmtPHP(
-                                                analysis.dailyBreakdown.reduce(
-                                                    (sum, d) => sum + d.revenue,
-                                                    0,
-                                                ),
-                                            )}
-                                        </td>
-                                        <td className="num">
-                                            {fmtPHP(
-                                                analysis.dailyBreakdown.reduce(
-                                                    (sum, d) => sum + d.cost,
-                                                    0,
-                                                ),
-                                            )}
-                                        </td>
-                                        <td className="num">
-                                            {fmtPHP(
-                                                analysis.dailyBreakdown.reduce(
-                                                    (sum, d) => sum + d.profit,
-                                                    0,
-                                                ),
-                                            )}
-                                        </td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    )}
-
-                    {/* ═══ TRANSACTION DETAILS ═══ */}
-                    <div className="report-section">
-                        <div className="report-section-header">
-                            <FileTextOutlined className="report-section-icon" />
-                            <span className="report-section-title">
-                                Transaction Details
-                            </span>
-                        </div>
-
-                        <table className="report-table">
-                            <thead>
-                                <tr>
-                                    {reportType === 'parking' && (
-                                        <>
-                                            <th>Txn #</th>
-                                            <th>Customer</th>
-                                            <th className="center">Slot</th>
-                                            <th>Check-In</th>
-                                            <th>Check-Out</th>
-                                            <th className="center">Nights</th>
-                                            <th className="center">Payment</th>
-                                            <th className="num">Paid</th>
-                                            <th className="num">Change</th>
-                                            <th className="num">Amount</th>
-                                        </>
-                                    )}
-                                    {reportType === 'fuel' && (
-                                        <>
-                                            <th>Txn #</th>
-                                            <th>Date</th>
-                                            <th>Time</th>
-                                            <th>Product</th>
-                                            <th className="num">Liters</th>
-                                            <th className="num">Price/L</th>
-                                            <th className="num">Cost/L</th>
-                                            <th className="num">Cost</th>
-                                            <th className="num">Profit</th>
-                                            <th className="center">Payment</th>
-                                            <th className="num">Amount</th>
-                                        </>
-                                    )}
-                                    {reportType === 'combined' && (
-                                        <>
-                                            <th>Txn #</th>
-                                            <th className="center">Type</th>
-                                            <th>Customer / Product</th>
-                                            <th className="num">Qty</th>
-                                            <th>Date &amp; Time</th>
-                                            <th className="num">Cost</th>
-                                            <th className="num">Profit</th>
-                                            <th className="center">Payment</th>
-                                            <th className="num">Paid</th>
-                                            <th className="num">Change</th>
-                                            <th className="num">Amount</th>
-                                        </>
-                                    )}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {getTransactionsForTable().map((t: any, idx: number) => {
-                                    if (reportType === 'parking') {
-                                        return (
-                                            <tr key={`p-${t.id || idx}`}>
-                                                <td>
-                                                    <span className="mono">
-                                                        {t.transaction_number || 'N/A'}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    {t.customer
-                                                        ? `${t.customer.first_name} ${t.customer.last_name}`
-                                                        : 'N/A'}
-                                                </td>
-                                                <td className="center">
-                                                    {t.slot_number || '-'}
-                                                </td>
-                                                <td>
-                                                    {t.check_in_date
-                                                        ? dayjs(t.check_in_date).format(
-                                                              'MMM DD, YYYY',
-                                                          )
-                                                        : '-'}
-                                                </td>
-                                                <td>
-                                                    {t.check_out_date
-                                                        ? dayjs(t.check_out_date).format(
-                                                              'MMM DD, YYYY',
-                                                          )
-                                                        : '-'}
-                                                </td>
-                                                <td className="center">
-                                                    {t.nights_stayed || 1}
-                                                </td>
-                                                <td className="center">
-                                                    {(t.payment_method || 'cash').toUpperCase()}
-                                                </td>
-                                                <td className="num">
-                                                    {fmtPHP(t.amount_paid)}
-                                                </td>
-                                                <td className="num">
-                                                    {fmtPHP(t.change_amount)}
-                                                </td>
-                                                <td className="num">
-                                                    <span className="amount-strong">
-                                                        {fmtPHP(t.total_amount)}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    }
-
-                                    if (reportType === 'fuel') {
-                                        const cost = Number(t.total_cost ?? 0);
-                                        const profit = Number(
-                                            t.profit ??
-                                                Number(t.total_amount ?? 0) - cost,
-                                        );
-                                        return (
-                                            <tr key={`f-${t.id || idx}`}>
-                                                <td>
-                                                    <span className="mono">
-                                                        {t.transaction_number || 'N/A'}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    {t.date
-                                                        ? dayjs(t.date).format('MMM DD, YYYY')
-                                                        : '-'}
-                                                </td>
-                                                <td>
-                                                    {t.time
-                                                        ? dayjs(
-                                                              `2000-01-01 ${t.time}`,
-                                                          ).format('h:mm A')
-                                                        : '-'}
-                                                </td>
-                                                <td>{t.fuel_product?.type || 'N/A'}</td>
-                                                <td className="num">
-                                                    {fmtNum(t.liters)}
-                                                </td>
-                                                <td className="num">
-                                                    {fmtPHP(t.price_per_liter)}
-                                                </td>
-                                                <td className="num">
-                                                    {t.cost_price_per_liter
-                                                        ? fmtPHP(t.cost_price_per_liter)
-                                                        : '—'}
-                                                </td>
-                                                <td className="num">
-                                                    {cost > 0 ? (
-                                                        <span className="text-danger">
-                                                            {fmtPHP(cost)}
-                                                        </span>
-                                                    ) : (
-                                                        '—'
-                                                    )}
-                                                </td>
-                                                <td className="num">
-                                                    {cost > 0 ? (
-                                                        <span
-                                                            className={
-                                                                profit >= 0
-                                                                    ? 'text-success'
-                                                                    : 'text-danger'
-                                                            }
-                                                        >
-                                                            {fmtPHP(profit)}
-                                                        </span>
-                                                    ) : (
-                                                        '—'
-                                                    )}
-                                                </td>
-                                                <td className="center">
-                                                    {(t.payment_method || 'cash').toUpperCase()}
-                                                </td>
-                                                <td className="num">
-                                                    <span className="amount-strong">
-                                                        {fmtPHP(t.total_amount)}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    }
-
-                                    // combined
-                                    const cost = Number(t.total_cost ?? 0);
-                                    const profit =
-                                        cost > 0
-                                            ? Number(
-                                                  t.profit ??
-                                                      Number(t.total_amount ?? 0) - cost,
-                                              )
-                                            : Number(t.profit ?? t.total_amount ?? 0);
-                                    const qty =
-                                        t.type === 'parking'
-                                            ? `${t.nights_stayed || 1} night${
-                                                  (t.nights_stayed || 1) > 1 ? 's' : ''
-                                              }`
-                                            : `${fmtNum(t.liters)} L`;
-                                    const details =
-                                        t.type === 'parking'
-                                            ? t.customer
-                                                ? `${t.customer.first_name} ${t.customer.last_name}`
-                                                : 'N/A'
-                                            : t.fuel_product?.type || 'N/A';
-                                    const dt =
-                                        t.type === 'parking'
-                                            ? t.date ?? t.check_in_date
-                                            : t.date;
-                                    return (
-                                        <tr key={`c-${t.id || idx}`}>
-                                            <td>
-                                                <span className="mono">
-                                                    {t.transaction_number || 'N/A'}
-                                                </span>
-                                            </td>
-                                            <td className="center">
-                                                <span
-                                                    className={
-                                                        t.type === 'parking'
-                                                            ? 'type-parking'
-                                                            : 'type-fuel'
-                                                    }
-                                                >
-                                                    {t.type === 'parking'
-                                                        ? 'PARKING'
-                                                        : 'FUEL'}
-                                                </span>
-                                            </td>
-                                            <td>{details}</td>
-                                            <td className="num">{qty}</td>
-                                            <td>
-                                                {dt ? (
-                                                    <>
-                                                        <div>
-                                                            {dayjs(dt).format(
-                                                                'MMM DD, YYYY',
-                                                            )}
-                                                        </div>
-                                                        {t.time && (
-                                                            <div className="text-tertiary">
-                                                                {dayjs(
-                                                                    `2000-01-01 ${t.time}`,
-                                                                ).format('h:mm A')}
-                                                            </div>
-                                                        )}
-                                                    </>
-                                                ) : (
-                                                    '-'
-                                                )}
-                                            </td>
-                                            <td className="num">
-                                                {cost > 0 ? (
-                                                    <span className="text-danger">
-                                                        {fmtPHP(cost)}
-                                                    </span>
-                                                ) : (
-                                                    '—'
-                                                )}
-                                            </td>
-                                            <td className="num">
-                                                <span
-                                                    className={
-                                                        profit >= 0
-                                                            ? 'text-success'
-                                                            : 'text-danger'
-                                                    }
-                                                >
-                                                    {fmtPHP(profit)}
-                                                </span>
-                                            </td>
-                                            <td className="center">
-                                                {(
-                                                    t.payment_method || 'cash'
-                                                ).toUpperCase()}
-                                            </td>
-                                            <td className="num">
-                                                {fmtPHP(t.amount_paid)}
-                                            </td>
-                                            <td className="num">
-                                                {fmtPHP(t.change_amount)}
-                                            </td>
-                                            <td className="num">
-                                                <span className="amount-strong">
-                                                    {fmtPHP(t.total_amount)}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <td
-                                        colSpan={
-                                            reportType === 'parking'
-                                                ? 9
-                                                : reportType === 'fuel'
-                                                  ? 10
-                                                  : 10
-                                        }
-                                    >
-                                        TOTAL ({getTransactionsForTable().length} records)
-                                    </td>
-                                    <td className="num">
-                                        <span className="amount-strong">
-                                            {fmtPHP(
-                                                getTransactionsForTable().reduce(
-                                                    (sum, t) =>
-                                                        sum + Number(t.total_amount || 0),
-                                                    0,
-                                                ),
-                                            )}
-                                        </span>
-                                    </td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* ═══ SCREEN-ONLY: Filter Card ══════════════════════════════ */}
-            <div className="page-header" style={{ marginTop: 24 }}>
+            {/* ═══ SCREEN-ONLY: Header + Filter Card ═══ */}
+            <div className="page-header">
                 <div>
                     <h1 className="page-title">
                         <FileTextOutlined
@@ -2080,7 +1013,7 @@ const Reports: React.FC = () => {
             )}
 
             {loading && (
-                <Card style={{ textAlign: 'center', padding: 40 }}>
+                <Card style={{ textAlign: 'center', padding: 40, marginBottom: 24 }}>
                     <Spin size="large" tip="Generating report…" />
                 </Card>
             )}
@@ -2105,170 +1038,835 @@ const Reports: React.FC = () => {
                 </Card>
             )}
 
-            {/* ═══ SCREEN-ONLY: KPI Cards ════════════════════════════════ */}
-            {reportData && s && (
-                <>
-                    <Row gutter={[20, 20]} style={{ marginBottom: 24 }}>
-                        <Col xs={24} sm={12} lg={6}>
-                            <Card
-                                style={{
-                                    borderRadius: 12,
-                                    background: 'var(--bg-card)',
-                                    borderColor: 'var(--border-color)',
-                                }}
-                            >
-                                <Statistic
-                                    title={
-                                        <span
-                                            style={{
-                                                fontSize: 11,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: 0.5,
-                                            }}
-                                        >
-                                            Total Revenue
-                                        </span>
-                                    }
-                                    value={reportData.summary.total_revenue}
-                                    formatter={(v) => fmtPHP(v as number)}
-                                    valueStyle={{
-                                        color: 'var(--success)',
-                                        fontSize: 22,
-                                        fontWeight: 700,
-                                    }}
-                                    prefix={<DollarOutlined />}
-                                />
-                            </Card>
-                        </Col>
-                        <Col xs={24} sm={12} lg={6}>
-                            <Card
-                                style={{
-                                    borderRadius: 12,
-                                    background: 'var(--bg-card)',
-                                    borderColor: 'var(--border-color)',
-                                }}
-                            >
-                                <Statistic
-                                    title={
-                                        <span
-                                            style={{
-                                                fontSize: 11,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: 0.5,
-                                            }}
-                                        >
-                                            Total Cost
-                                        </span>
-                                    }
-                                    value={reportData.summary.total_cost ?? 0}
-                                    formatter={(v) => fmtPHP(v as number)}
-                                    valueStyle={{
-                                        color: 'var(--danger)',
-                                        fontSize: 22,
-                                        fontWeight: 700,
-                                    }}
-                                    prefix={<FallOutlined />}
-                                />
-                            </Card>
-                        </Col>
-                        <Col xs={24} sm={12} lg={6}>
-                            <Card
-                                style={{
-                                    borderRadius: 12,
-                                    background: 'var(--bg-card)',
-                                    borderColor: 'var(--border-color)',
-                                }}
-                            >
-                                <Statistic
-                                    title={
-                                        <span
-                                            style={{
-                                                fontSize: 11,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: 0.5,
-                                            }}
-                                        >
-                                            Net Profit
-                                        </span>
-                                    }
-                                    value={reportData.summary.total_profit ?? 0}
-                                    formatter={(v) => fmtPHP(v as number)}
-                                    valueStyle={{
-                                        color: 'var(--primary)',
-                                        fontSize: 22,
-                                        fontWeight: 700,
-                                    }}
-                                    prefix={<RiseOutlined />}
-                                />
-                            </Card>
-                        </Col>
-                        <Col xs={24} sm={12} lg={6}>
-                            <Card
-                                style={{
-                                    borderRadius: 12,
-                                    background: 'var(--bg-card)',
-                                    borderColor: 'var(--border-color)',
-                                }}
-                            >
-                                <Statistic
-                                    title={
-                                        <span
-                                            style={{
-                                                fontSize: 11,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: 0.5,
-                                            }}
-                                        >
-                                            Total Transactions
-                                        </span>
-                                    }
-                                    value={reportData.summary.total_transactions}
-                                    valueStyle={{
-                                        color: 'var(--info)',
-                                        fontSize: 22,
-                                        fontWeight: 700,
-                                    }}
-                                    prefix={<ShoppingOutlined />}
-                                />
-                            </Card>
-                        </Col>
-                    </Row>
-
-                    <Card
-                        title={
-                            <Space>
-                                <FileTextOutlined style={{ color: COLORS.primary }} />
-                                <span style={{ fontWeight: 700 }}>
-                                    Transaction Details
+            {/* ═══ PRINTABLE REPORT ═══════════════════════════════════════ */}
+            {reportData && analysis && s && (
+                <div
+                    id="printable-report"
+                    className="report-document"
+                    key={`report-${reportKey}`}
+                >
+                    {/* Letterhead */}
+                    <div className="report-letterhead">
+                        <div className="report-company">PARK &amp; FUEL MANAGEMENT SYSTEM</div>
+                        <div className="report-company-sub">
+                            Parking &amp; Fuel Operations Report
+                        </div>
+                        <div className="report-title">
+                            {reportTypeLabel}
+                            {reportType === 'fuel' && fuelProductId
+                                ? ` — ${fuelProducts.find((p) => p.id === fuelProductId)?.type}`
+                                : ''}
+                        </div>
+                        <div className="report-meta-line">
+                            <div>
+                                <strong>Reporting Period:</strong>{' '}
+                                {reportData.date_range.start} to {reportData.date_range.end}{' '}
+                                ({analysis.dayCount} day{analysis.dayCount === 1 ? '' : 's'})
+                            </div>
+                            <div>
+                                <strong>Generated:</strong>{' '}
+                                {dayjs().format('MMMM D, YYYY [at] h:mm A')}
+                            </div>
+                            <div>
+                                <strong>Report ID:</strong>{' '}
+                                <span className="mono">
+                                    RPT-{dayjs().format('YYYYMMDD-HHmmss')}-
+                                    {reportType.toUpperCase()}
                                 </span>
-                                <Tag color="blue">
-                                    {getTransactionsForTable().length} records
-                                </Tag>
-                            </Space>
-                        }
-                        style={{
-                            borderRadius: 12,
-                            background: 'var(--bg-card)',
-                            borderColor: 'var(--border-color)',
-                        }}
-                    >
-                        <Table
-                            columns={getTableColumns()}
-                            dataSource={getTransactionsForTable()}
-                            rowKey="id"
-                            pagination={{
-                                pageSize: 25,
-                                showSizeChanger: true,
-                                pageSizeOptions: ['10', '25', '50', '100'],
-                                showTotal: (total, range) =>
-                                    `${range[0]}–${range[1]} of ${total} records`,
-                            }}
-                            loading={loading}
-                            scroll={{ x: 'max-content' }}
-                            size="small"
-                        />
-                    </Card>
-                </>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ═══ EXECUTIVE SUMMARY ═══ */}
+                    <div className="report-section">
+                        <div className="report-section-header">
+                            <CheckCircleOutlined className="report-section-icon" />
+                            <span className="report-section-title">Executive Summary</span>
+                        </div>
+
+                        <div className="report-kpi-grid">
+                            <div className="report-kpi">
+                                <div className="report-kpi-label">Total Revenue</div>
+                                <div className="report-kpi-value success">
+                                    {fmtPHP(s.total_revenue)}
+                                </div>
+                                <div className="report-kpi-sub">
+                                    {s.total_transactions} transactions
+                                </div>
+                            </div>
+                            {showCost && (
+                                <div className="report-kpi">
+                                    <div className="report-kpi-label">Total Cost</div>
+                                    <div className="report-kpi-value danger">
+                                        {fmtPHP(s.total_cost ?? 0)}
+                                    </div>
+                                    <div className="report-kpi-sub">Cost of goods sold</div>
+                                </div>
+                            )}
+                            {showCost && (
+                                <div className="report-kpi">
+                                    <div className="report-kpi-label">Net Profit</div>
+                                    <div className="report-kpi-value primary">
+                                        {fmtPHP(s.total_profit ?? 0)}
+                                    </div>
+                                    <div className="report-kpi-sub">
+                                        {profitMargin !== null
+                                            ? `${fmtPct(profitMargin)} margin`
+                                            : 'Margin n/a'}
+                                    </div>
+                                </div>
+                            )}
+                            <div className="report-kpi">
+                                <div className="report-kpi-label">Avg. Transaction</div>
+                                <div className="report-kpi-value">
+                                    {fmtPHP(s.average_transaction)}
+                                </div>
+                                <div className="report-kpi-sub">Per sale</div>
+                            </div>
+                            <div className="report-kpi">
+                                <div className="report-kpi-label">Daily Average</div>
+                                <div className="report-kpi-value">
+                                    {fmtPHP(analysis.dailyAvgRev)}
+                                </div>
+                                <div className="report-kpi-sub">
+                                    Over {analysis.dayCount} day
+                                    {analysis.dayCount === 1 ? '' : 's'}
+                                </div>
+                            </div>
+                            <div className="report-kpi">
+                                <div className="report-kpi-label">Change Given</div>
+                                <div className="report-kpi-value warning">
+                                    {fmtPHP(analysis.totalChange)}
+                                </div>
+                                <div className="report-kpi-sub">Total cash returned</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ═══ PARKING SECTION ═══ */}
+                    {hasParking && analysis.parkingTxs.length > 0 && (
+                        <div className="report-section">
+                            <div className="report-section-header">
+                                <CarOutlined className="report-section-icon" />
+                                <span className="report-section-title">Parking Operations</span>
+                            </div>
+
+                            <div className="report-kpi-grid">
+                                <div className="report-kpi">
+                                    <div className="report-kpi-label">Parking Revenue</div>
+                                    <div className="report-kpi-value success">
+                                        {fmtPHP(s.parking_revenue)}
+                                    </div>
+                                    <div className="report-kpi-sub">
+                                        {s.parking_transactions || 0} transactions
+                                    </div>
+                                </div>
+                                <div className="report-kpi">
+                                    <div className="report-kpi-label">Total Nights</div>
+                                    <div className="report-kpi-value">
+                                        {fmtNum(s.total_parking_nights || 0)}
+                                    </div>
+                                    <div className="report-kpi-sub">Accommodated</div>
+                                </div>
+                                <div className="report-kpi">
+                                    <div className="report-kpi-label">Avg. Nights / Booking</div>
+                                    <div className="report-kpi-value">
+                                        {analysis.avgNights.toFixed(2)}
+                                    </div>
+                                    <div className="report-kpi-sub">Stay duration</div>
+                                </div>
+                            </div>
+
+                            {analysis.slotBreakdown.length > 0 && (
+                                <div style={{ marginTop: 16 }}>
+                                    <div
+                                        style={{
+                                            fontSize: 11,
+                                            fontWeight: 800,
+                                            textTransform: 'uppercase',
+                                            letterSpacing: 0.8,
+                                            color: 'var(--text-secondary)',
+                                            marginBottom: 8,
+                                        }}
+                                    >
+                                        Slot Performance
+                                    </div>
+                                    <Paginated rows={analysis.slotBreakdown} printing={printing}>
+                                        {(rows) => (
+                                            <table className="report-mini-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Slot</th>
+                                                        <th className="num">Transactions</th>
+                                                        <th className="num">Nights</th>
+                                                        <th className="num">Revenue</th>
+                                                        <th className="num">% Share</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {rows.map((row) => {
+                                                        const pct =
+                                                            (s.parking_revenue || 0) > 0
+                                                                ? (row.revenue / s.parking_revenue!) * 100
+                                                                : 0;
+                                                        return (
+                                                            <tr key={row.slot}>
+                                                                <td>
+                                                                    <strong>{row.slot}</strong>
+                                                                </td>
+                                                                <td className="num">{row.txns}</td>
+                                                                <td className="num">{row.nights}</td>
+                                                                <td className="num">
+                                                                    <span className="text-success">
+                                                                        {fmtPHP(row.revenue)}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="num">{fmtPct(pct)}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </Paginated>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ═══ FUEL SECTION ═══ */}
+                    {hasFuel && analysis.fuelTxs.length > 0 && (
+                        <div className="report-section">
+                            <div className="report-section-header">
+                                <FireOutlined className="report-section-icon" />
+                                <span className="report-section-title">Fuel Operations</span>
+                            </div>
+
+                            <div className="report-kpi-grid">
+                                <div className="report-kpi">
+                                    <div className="report-kpi-label">Fuel Revenue</div>
+                                    <div className="report-kpi-value success">
+                                        {fmtPHP(s.fuel_revenue)}
+                                    </div>
+                                    <div className="report-kpi-sub">
+                                        {s.fuel_transactions || 0} transactions
+                                    </div>
+                                </div>
+                                <div className="report-kpi">
+                                    <div className="report-kpi-label">Liters Sold</div>
+                                    <div className="report-kpi-value">
+                                        {fmtNum(s.total_liters_sold || 0)} L
+                                    </div>
+                                    <div className="report-kpi-sub">
+                                        Avg {analysis.avgLiters.toFixed(2)} L/sale
+                                    </div>
+                                </div>
+                                <div className="report-kpi">
+                                    <div className="report-kpi-label">Fuel Cost</div>
+                                    <div className="report-kpi-value danger">
+                                        {fmtPHP(s.fuel_cost ?? 0)}
+                                    </div>
+                                    <div className="report-kpi-sub">Purchased</div>
+                                </div>
+                                <div className="report-kpi">
+                                    <div className="report-kpi-label">Fuel Profit</div>
+                                    <div className="report-kpi-value primary">
+                                        {fmtPHP(s.fuel_profit ?? 0)}
+                                    </div>
+                                    <div className="report-kpi-sub">
+                                        {s.fuel_revenue && s.fuel_revenue > 0
+                                            ? `${fmtPct(((s.fuel_profit ?? 0) / s.fuel_revenue) * 100)} margin`
+                                            : 'Margin n/a'}
+                                    </div>
+                                </div>
+                                {analysis.peakHour !== null && (
+                                    <div className="report-kpi">
+                                        <div className="report-kpi-label">Peak Hour</div>
+                                        <div className="report-kpi-value">
+                                            {analysis.peakHour}:00
+                                        </div>
+                                        <div className="report-kpi-sub">
+                                            {analysis.peakCount} sales
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {analysis.productBreakdown.length > 0 && (
+                                <div style={{ marginTop: 16 }}>
+                                    <div
+                                        style={{
+                                            fontSize: 11,
+                                            fontWeight: 800,
+                                            textTransform: 'uppercase',
+                                            letterSpacing: 0.8,
+                                            color: 'var(--text-secondary)',
+                                            marginBottom: 8,
+                                        }}
+                                    >
+                                        Product Performance
+                                    </div>
+                                    <Paginated rows={analysis.productBreakdown} printing={printing}>
+                                        {(rows) => (
+                                            <table className="report-mini-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Product</th>
+                                                        <th className="num">Txn</th>
+                                                        <th className="num">Liters</th>
+                                                        <th className="num">Revenue</th>
+                                                        <th className="num">Cost</th>
+                                                        <th className="num">Profit</th>
+                                                        <th className="num">Margin</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {rows.map((row) => {
+                                                        const margin =
+                                                            row.revenue > 0
+                                                                ? (row.profit / row.revenue) * 100
+                                                                : 0;
+                                                        return (
+                                                            <tr key={row.product}>
+                                                                <td>
+                                                                    <strong>{row.product}</strong>
+                                                                </td>
+                                                                <td className="num">{row.txns}</td>
+                                                                <td className="num">
+                                                                    {fmtNum(row.liters)}
+                                                                </td>
+                                                                <td className="num">
+                                                                    <span className="text-success">
+                                                                        {fmtPHP(row.revenue)}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="num">
+                                                                    <span className="text-danger">
+                                                                        {fmtPHP(row.cost)}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="num">
+                                                                    <span
+                                                                        className={
+                                                                            row.profit >= 0
+                                                                                ? 'text-success'
+                                                                                : 'text-danger'
+                                                                        }
+                                                                    >
+                                                                        {fmtPHP(row.profit)}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="num">{fmtPct(margin)}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                                <tfoot>
+                                                    <tr>
+                                                        <td>TOTAL</td>
+                                                        <td className="num">
+                                                            {analysis.productBreakdown.reduce(
+                                                                (sum, p) => sum + p.txns,
+                                                                0,
+                                                            )}
+                                                        </td>
+                                                        <td className="num">
+                                                            {fmtNum(
+                                                                analysis.productBreakdown.reduce(
+                                                                    (sum, p) => sum + p.liters,
+                                                                    0,
+                                                                ),
+                                                            )}
+                                                        </td>
+                                                        <td className="num">
+                                                            {fmtPHP(
+                                                                analysis.productBreakdown.reduce(
+                                                                    (sum, p) => sum + p.revenue,
+                                                                    0,
+                                                                ),
+                                                            )}
+                                                        </td>
+                                                        <td className="num">
+                                                            {fmtPHP(
+                                                                analysis.productBreakdown.reduce(
+                                                                    (sum, p) => sum + p.cost,
+                                                                    0,
+                                                                ),
+                                                            )}
+                                                        </td>
+                                                        <td className="num">
+                                                            {fmtPHP(
+                                                                analysis.productBreakdown.reduce(
+                                                                    (sum, p) => sum + p.profit,
+                                                                    0,
+                                                                ),
+                                                            )}
+                                                        </td>
+                                                        <td className="num">—</td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        )}
+                                    </Paginated>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ═══ PAYMENT METHOD BREAKDOWN ═══ */}
+                    <div className="report-section">
+                        <div className="report-section-header">
+                            <CreditCardOutlined className="report-section-icon" />
+                            <span className="report-section-title">
+                                Payment Method Breakdown
+                            </span>
+                        </div>
+
+                        <Paginated
+                            rows={Object.entries(
+                                analysis.paymentBreakdown(reportData.transactions),
+                            )}
+                            printing={printing}
+                        >
+                            {(rows) => (
+                                <table className="report-mini-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Payment Method</th>
+                                            <th className="num">Transactions</th>
+                                            <th className="num">Revenue</th>
+                                            <th className="num">% Share</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {rows.map(([method, stats]) => {
+                                            const pct =
+                                                (s.total_revenue || 0) > 0
+                                                    ? (stats.amount / s.total_revenue) * 100
+                                                    : 0;
+                                            return (
+                                                <tr key={method}>
+                                                    <td>
+                                                        <strong>{method.toUpperCase()}</strong>
+                                                    </td>
+                                                    <td className="num">{stats.count}</td>
+                                                    <td className="num">
+                                                        <span className="text-success">
+                                                            {fmtPHP(stats.amount)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="num">{fmtPct(pct)}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
+                        </Paginated>
+                    </div>
+
+                    {/* ═══ DAILY REVENUE TREND ═══ */}
+                    {analysis.dailyBreakdown.length > 0 && (
+                        <div className="report-section">
+                            <div className="report-section-header">
+                                <CalendarOutlined className="report-section-icon" />
+                                <span className="report-section-title">
+                                    Daily Revenue Trend
+                                </span>
+                            </div>
+
+                            <Paginated rows={analysis.dailyBreakdown} printing={printing}>
+                                {(rows) => (
+                                    <table className="report-mini-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th className="num">Transactions</th>
+                                                <th className="num">Revenue</th>
+                                                {showCost && <th className="num">Cost</th>}
+                                                {showCost && <th className="num">Profit</th>}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {rows.map((d) => (
+                                                <tr key={d.date}>
+                                                    <td>
+                                                        {dayjs(d.date).format(
+                                                            'ddd, MMM DD, YYYY',
+                                                        )}
+                                                    </td>
+                                                    <td className="num">{d.txns}</td>
+                                                    <td className="num">
+                                                        <span className="text-success">
+                                                            {fmtPHP(d.revenue)}
+                                                        </span>
+                                                    </td>
+                                                    {showCost && (
+                                                        <td className="num">
+                                                            {d.cost > 0 ? (
+                                                                <span className="text-danger">
+                                                                    {fmtPHP(d.cost)}
+                                                                </span>
+                                                            ) : (
+                                                                '—'
+                                                            )}
+                                                        </td>
+                                                    )}
+                                                    {showCost && (
+                                                        <td className="num">
+                                                            <span
+                                                                className={
+                                                                    d.profit >= 0
+                                                                        ? 'text-success'
+                                                                        : 'text-danger'
+                                                                }
+                                                            >
+                                                                {fmtPHP(d.profit)}
+                                                            </span>
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr>
+                                                <td>TOTAL</td>
+                                                <td className="num">
+                                                    {analysis.dailyBreakdown.reduce(
+                                                        (sum, d) => sum + d.txns,
+                                                        0,
+                                                    )}
+                                                </td>
+                                                <td className="num">
+                                                    {fmtPHP(
+                                                        analysis.dailyBreakdown.reduce(
+                                                            (sum, d) => sum + d.revenue,
+                                                            0,
+                                                        ),
+                                                    )}
+                                                </td>
+                                                {showCost && (
+                                                    <td className="num">
+                                                        {fmtPHP(
+                                                            analysis.dailyBreakdown.reduce(
+                                                                (sum, d) => sum + d.cost,
+                                                                0,
+                                                            ),
+                                                        )}
+                                                    </td>
+                                                )}
+                                                {showCost && (
+                                                    <td className="num">
+                                                        {fmtPHP(
+                                                            analysis.dailyBreakdown.reduce(
+                                                                (sum, d) => sum + d.profit,
+                                                                0,
+                                                            ),
+                                                        )}
+                                                    </td>
+                                                )}
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                )}
+                            </Paginated>
+                        </div>
+                    )}
+
+                    {/* ═══ TRANSACTION DETAILS ═══ */}
+                    <div className="report-section">
+                        <div className="report-section-header">
+                            <FileTextOutlined className="report-section-icon" />
+                            <span className="report-section-title">
+                                Transaction Details
+                            </span>
+                        </div>
+
+                        <Paginated rows={tableRows} printing={printing}>
+                            {(rows) => (
+                                <div className="report-table-wrap">
+                                    <table className="report-table">
+                                        <thead>
+                                            <tr>
+                                                {reportType === 'parking' && (
+                                                    <>
+                                                        <th>Txn #</th>
+                                                        <th>Customer</th>
+                                                        <th className="center">Slot</th>
+                                                        <th>Check-In</th>
+                                                        <th>Check-Out</th>
+                                                        <th className="center">Nights</th>
+                                                        <th className="center">Payment</th>
+                                                        <th className="num">Paid</th>
+                                                        <th className="num">Change</th>
+                                                        <th className="num">Amount</th>
+                                                    </>
+                                                )}
+                                                {reportType === 'fuel' && (
+                                                    <>
+                                                        <th>Txn #</th>
+                                                        <th>Date</th>
+                                                        <th>Time</th>
+                                                        <th>Product</th>
+                                                        <th className="num">Liters</th>
+                                                        <th className="num">Price/L</th>
+                                                        <th className="num">Cost/L</th>
+                                                        <th className="num">Cost</th>
+                                                        <th className="num">Profit</th>
+                                                        <th className="center">Payment</th>
+                                                        <th className="num">Amount</th>
+                                                    </>
+                                                )}
+                                                {reportType === 'combined' && (
+                                                    <>
+                                                        <th>Txn #</th>
+                                                        <th className="center">Type</th>
+                                                        <th>Customer / Product</th>
+                                                        <th className="num">Qty</th>
+                                                        <th>Date &amp; Time</th>
+                                                        <th className="center">Payment</th>
+                                                        <th className="num">Paid</th>
+                                                        <th className="num">Change</th>
+                                                        <th className="num">Amount</th>
+                                                    </>
+                                                )}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {rows.map((t: any, idx: number) => {
+                                                if (reportType === 'parking') {
+                                                    return (
+                                                        <tr key={`p-${t.id ?? idx}`}>
+                                                            <td>
+                                                                <span className="mono">
+                                                                    {t.transaction_number || 'N/A'}
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                {t.customer
+                                                                    ? `${t.customer.first_name} ${t.customer.last_name}`
+                                                                    : 'N/A'}
+                                                            </td>
+                                                            <td className="center">
+                                                                {t.slot_number || '-'}
+                                                            </td>
+                                                            <td>
+                                                                {t.check_in_date
+                                                                    ? dayjs(t.check_in_date).format(
+                                                                          'MMM DD, YYYY',
+                                                                      )
+                                                                    : '-'}
+                                                            </td>
+                                                            <td>
+                                                                {t.check_out_date
+                                                                    ? dayjs(t.check_out_date).format(
+                                                                          'MMM DD, YYYY',
+                                                                      )
+                                                                    : '-'}
+                                                            </td>
+                                                            <td className="center">
+                                                                {t.nights_stayed || 1}
+                                                            </td>
+                                                            <td className="center">
+                                                                {(t.payment_method || 'cash').toUpperCase()}
+                                                            </td>
+                                                            <td className="num">
+                                                                {fmtPHP(t.amount_paid)}
+                                                            </td>
+                                                            <td className="num">
+                                                                {fmtPHP(t.change_amount)}
+                                                            </td>
+                                                            <td className="num">
+                                                                <span className="amount-strong">
+                                                                    {fmtPHP(t.total_amount)}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                }
+
+                                                if (reportType === 'fuel') {
+                                                    const cost = Number(t.total_cost ?? 0);
+                                                    const profit = Number(
+                                                        t.profit ??
+                                                            Number(t.total_amount ?? 0) - cost,
+                                                    );
+                                                    return (
+                                                        <tr key={`f-${t.id ?? idx}`}>
+                                                            <td>
+                                                                <span className="mono">
+                                                                    {t.transaction_number || 'N/A'}
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                {t.date
+                                                                    ? dayjs(t.date).format('MMM DD, YYYY')
+                                                                    : '-'}
+                                                            </td>
+                                                            <td>
+                                                                {t.time
+                                                                    ? dayjs(
+                                                                          `2000-01-01 ${t.time}`,
+                                                                      ).format('h:mm A')
+                                                                    : '-'}
+                                                            </td>
+                                                            <td>{t.fuel_product?.type || 'N/A'}</td>
+                                                            <td className="num">
+                                                                {fmtNum(t.liters)}
+                                                            </td>
+                                                            <td className="num">
+                                                                {fmtPHP(t.price_per_liter)}
+                                                            </td>
+                                                            <td className="num">
+                                                                {t.cost_price_per_liter
+                                                                    ? fmtPHP(t.cost_price_per_liter)
+                                                                    : '—'}
+                                                            </td>
+                                                            <td className="num">
+                                                                {cost > 0 ? (
+                                                                    <span className="text-danger">
+                                                                        {fmtPHP(cost)}
+                                                                    </span>
+                                                                ) : (
+                                                                    '—'
+                                                                )}
+                                                            </td>
+                                                            <td className="num">
+                                                                {cost > 0 ? (
+                                                                    <span
+                                                                        className={
+                                                                            profit >= 0
+                                                                                ? 'text-success'
+                                                                                : 'text-danger'
+                                                                        }
+                                                                    >
+                                                                        {fmtPHP(profit)}
+                                                                    </span>
+                                                                ) : (
+                                                                    '—'
+                                                                )}
+                                                            </td>
+                                                            <td className="center">
+                                                                {(t.payment_method || 'cash').toUpperCase()}
+                                                            </td>
+                                                            <td className="num">
+                                                                <span className="amount-strong">
+                                                                    {fmtPHP(t.total_amount)}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                }
+
+                                                // combined
+                                                const qty =
+                                                    t.type === 'parking'
+                                                        ? `${t.nights_stayed || 1} night${
+                                                              (t.nights_stayed || 1) > 1 ? 's' : ''
+                                                          }`
+                                                        : `${fmtNum(t.liters)} L`;
+                                                const details =
+                                                    t.type === 'parking'
+                                                        ? t.customer
+                                                            ? `${t.customer.first_name} ${t.customer.last_name}`
+                                                            : 'N/A'
+                                                        : t.fuel_product?.type || 'N/A';
+                                                const dt =
+                                                    t.type === 'parking'
+                                                        ? t.date ?? t.check_in_date
+                                                        : t.date;
+                                                return (
+                                                    <tr key={`c-${t.id ?? idx}-${t.type}`}>
+                                                        <td>
+                                                            <span className="mono">
+                                                                {t.transaction_number || 'N/A'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="center">
+                                                            <span
+                                                                className={
+                                                                    t.type === 'parking'
+                                                                        ? 'type-parking'
+                                                                        : 'type-fuel'
+                                                                }
+                                                            >
+                                                                {t.type === 'parking'
+                                                                    ? 'PARKING'
+                                                                    : 'FUEL'}
+                                                            </span>
+                                                        </td>
+                                                        <td>{details}</td>
+                                                        <td className="num">{qty}</td>
+                                                        <td>
+                                                            {dt ? (
+                                                                <>
+                                                                    <div>
+                                                                        {dayjs(dt).format(
+                                                                            'MMM DD, YYYY',
+                                                                        )}
+                                                                    </div>
+                                                                    {t.time && (
+                                                                        <div className="text-tertiary">
+                                                                            {dayjs(
+                                                                                `2000-01-01 ${t.time}`,
+                                                                            ).format('h:mm A')}
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            ) : (
+                                                                '-'
+                                                            )}
+                                                        </td>
+                                                        <td className="center">
+                                                            {(t.payment_method || 'cash').toUpperCase()}
+                                                        </td>
+                                                        <td className="num">
+                                                            {fmtPHP(t.amount_paid)}
+                                                        </td>
+                                                        <td className="num">
+                                                            {fmtPHP(t.change_amount)}
+                                                        </td>
+                                                        <td className="num">
+                                                            <span className="amount-strong">
+                                                                {fmtPHP(t.total_amount)}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr>
+                                                <td
+                                                    colSpan={
+                                                        reportType === 'parking'
+                                                            ? 9
+                                                            : reportType === 'fuel'
+                                                              ? 10
+                                                              : 8
+                                                    }
+                                                >
+                                                    TOTAL ({tableRows.length} records)
+                                                </td>
+                                                <td className="num">
+                                                    <span className="amount-strong">
+                                                        {fmtPHP(
+                                                            tableRows.reduce(
+                                                                (sum: number, t: any) =>
+                                                                    sum + Number(t.total_amount || 0),
+                                                                0,
+                                                            ),
+                                                        )}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            )}
+                        </Paginated>
+                    </div>
+                </div>
             )}
         </div>
     );

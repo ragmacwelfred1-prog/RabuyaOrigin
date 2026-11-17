@@ -1,7 +1,8 @@
 // resources/js/services/api.ts
 import axios from "axios";
 
-const baseURL = "https://darkgray-bear-137683.hostingersite.com/api";
+// const baseURL = "https://darkgray-bear-137683.hostingersite.com/api";
+const baseURL = "http://localhost:8000/api"
 
 const api = axios.create({
     baseURL,

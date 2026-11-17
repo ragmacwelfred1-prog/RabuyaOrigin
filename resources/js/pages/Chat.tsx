@@ -68,6 +68,16 @@ const initials = (c: { first_name?: string; last_name?: string }) =>
 
 const roleColor = (role: string) => (role === 'staff' ? '#8B5CF6' : '#10B981');
 
+// Remove duplicate messages (by id), keeping the first occurrence
+const mergeById = (list: ChatMessage[]): ChatMessage[] => {
+    const seen = new Set<number>();
+    return list.filter((m) => {
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+    });
+};
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 const Chat: React.FC = () => {
@@ -97,6 +107,12 @@ const Chat: React.FC = () => {
     const bottomRef = useRef<HTMLDivElement>(null);
     const activeConvRef = useRef<number | null>(null);
     const lastCountRef = useRef(0);
+
+    // Send guards (refs update instantly, unlike state)
+    const sendingRef = useRef(false);
+    // Bumped when a send starts and when it ends. A poll that began before
+    // either event is stale and must be discarded.
+    const sendVersionRef = useRef(0);
 
     // ─── Debounce search ────────────────────────────────────────────────────
     useEffect(() => {
@@ -142,14 +158,26 @@ const Chat: React.FC = () => {
     // ─── Messages ───────────────────────────────────────────────────────────
     const loadMessages = useCallback(
         async (convId: number, silent = false) => {
+            // Skip silent polls entirely while a send is in progress
+            if (silent && sendingRef.current) return;
+
+            const versionAtStart = sendVersionRef.current;
+
             if (!silent) setMsgLoading(true);
             try {
                 const r = await api.get(
                     `/chat/conversations/${convId}/messages`,
                 );
                 if (activeConvRef.current !== convId) return;
+
+                // A send started or finished while this request was in flight:
+                // the result is stale, so ignore it (the next poll will sync).
+                if (silent && versionAtStart !== sendVersionRef.current) return;
+
                 setMessages(
-                    Array.isArray(r.data?.messages) ? r.data.messages : [],
+                    mergeById(
+                        Array.isArray(r.data?.messages) ? r.data.messages : [],
+                    ),
                 );
             } catch {
                 if (!silent) message.error('Failed to load messages');
@@ -237,16 +265,44 @@ const Chat: React.FC = () => {
         reader.readAsDataURL(file);
     };
 
-    // ─── Send ───────────────────────────────────────────────────────────────
+    // ─── Send (optimistic) ──────────────────────────────────────────────────
     const handleSend = async () => {
         const body = text.trim();
-        if ((!body && !pendingFile) || !conversationId || sending) return;
+        if (
+            (!body && !pendingFile) ||
+            !conversationId ||
+            !user ||
+            sendingRef.current
+        )
+            return;
 
+        sendingRef.current = true;
+        sendVersionRef.current += 1; // invalidate any poll already in flight
         setSending(true);
+
+        const file = pendingFile;
+        const preview = pendingPreview;
+        const tempId = -Date.now(); // negative id = temporary message
+
+        // Show the message instantly and clear the composer
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: tempId,
+                conversation_id: conversationId,
+                sender_id: user.id,
+                body: body || null,
+                image_url: preview,
+                created_at: new Date().toISOString(),
+            },
+        ]);
+        setText('');
+        clearPendingImage();
+
         try {
             const formData = new FormData();
             if (body) formData.append('body', body);
-            if (pendingFile) formData.append('image', pendingFile);
+            if (file) formData.append('image', file);
 
             const r = await api.post(
                 `/chat/conversations/${conversationId}/messages`,
@@ -254,13 +310,25 @@ const Chat: React.FC = () => {
                 { headers: { 'Content-Type': 'multipart/form-data' } },
             );
 
-            setMessages((prev) => [...prev, r.data.message]);
-            setText('');
-            clearPendingImage();
+            // Swap temp message for the real one (dedupe just in case)
+            setMessages((prev) =>
+                mergeById(
+                    prev.map((m) => (m.id === tempId ? r.data.message : m)),
+                ),
+            );
             loadContacts(true);
         } catch (e: any) {
+            // Roll back and restore what the user typed
+            setMessages((prev) => prev.filter((m) => m.id !== tempId));
+            setText(body);
+            if (file) {
+                setPendingFile(file);
+                setPendingPreview(preview);
+            }
             message.error(e.response?.data?.message || 'Failed to send');
         } finally {
+            sendVersionRef.current += 1; // invalidate polls started during the send
+            sendingRef.current = false;
             setSending(false);
         }
     };
@@ -277,8 +345,7 @@ const Chat: React.FC = () => {
         0,
     );
 
-    const canSend =
-        (text.trim().length > 0 || !!pendingFile) && !sending;
+    const canSend = (text.trim().length > 0 || !!pendingFile) && !sending;
 
     return (
         <div>
@@ -398,9 +465,7 @@ const Chat: React.FC = () => {
                                             {initials(c)}
                                         </Avatar>
 
-                                        <div
-                                            style={{ flex: 1, minWidth: 0 }}
-                                        >
+                                        <div style={{ flex: 1, minWidth: 0 }}>
                                             <div
                                                 style={{
                                                     display: 'flex',
@@ -596,8 +661,7 @@ const Chat: React.FC = () => {
                                     display: 'flex',
                                     flexDirection: 'column',
                                     gap: 6,
-                                    background:
-                                        'var(--bg-surface-hover)',
+                                    background: 'var(--bg-surface-hover)',
                                 }}
                             >
                                 {msgLoading ? (
@@ -623,6 +687,7 @@ const Chat: React.FC = () => {
                                     messages.map((m, i) => {
                                         const isMine =
                                             m.sender_id === user?.id;
+                                        const isTemp = m.id < 0;
                                         const prev = messages[i - 1];
                                         const showName =
                                             !isMine &&
@@ -640,25 +705,24 @@ const Chat: React.FC = () => {
                                                         ? 'flex-end'
                                                         : 'flex-start',
                                                     maxWidth: '70%',
+                                                    opacity: isTemp ? 0.6 : 1,
+                                                    transition:
+                                                        'opacity 0.2s',
                                                 }}
                                             >
-                                                {showName &&
-                                                    m.sender && (
-                                                        <div
-                                                            style={{
-                                                                fontSize: 10,
-                                                                color: 'var(--text-tertiary)',
-                                                                marginLeft: 8,
-                                                                marginBottom: 2,
-                                                            }}
-                                                        >
-                                                            {m.sender.first_name}{' '}
-                                                            {
-                                                                m.sender
-                                                                    .last_name
-                                                            }
-                                                        </div>
-                                                    )}
+                                                {showName && m.sender && (
+                                                    <div
+                                                        style={{
+                                                            fontSize: 10,
+                                                            color: 'var(--text-tertiary)',
+                                                            marginLeft: 8,
+                                                            marginBottom: 2,
+                                                        }}
+                                                    >
+                                                        {m.sender.first_name}{' '}
+                                                        {m.sender.last_name}
+                                                    </div>
+                                                )}
                                                 <div
                                                     style={{
                                                         padding: imageOnly
@@ -720,9 +784,11 @@ const Chat: React.FC = () => {
                                                         margin: '2px 8px 0',
                                                     }}
                                                 >
-                                                    {dayjs(
-                                                        m.created_at,
-                                                    ).format('h:mm A')}
+                                                    {isTemp
+                                                        ? 'Sending...'
+                                                        : dayjs(
+                                                              m.created_at,
+                                                          ).format('h:mm A')}
                                                 </div>
                                             </div>
                                         );
@@ -738,8 +804,7 @@ const Chat: React.FC = () => {
                                     flexDirection: 'column',
                                     gap: 8,
                                     padding: 12,
-                                    borderTop:
-                                        '1px solid var(--border-color)',
+                                    borderTop: '1px solid var(--border-color)',
                                 }}
                             >
                                 {pendingPreview && (

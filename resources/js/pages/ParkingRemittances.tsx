@@ -50,10 +50,13 @@ const fmtDateTime = (d: string | null) =>
 const ParkingRemittances: React.FC = () => {
     const [remittances, setRemittances] = useState<ParkingRemittance[]>([]);
     const [loading, setLoading] = useState(true);
+    // Full-page spinner is only for the very first load, so the filter bar
+    // (and its date pickers) never disappear while filtering.
+    const [initialLoad, setInitialLoad] = useState(true);
 
-    // Filters (status filter removed — everything is auto-approved)
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
+    // Filters (kept as dayjs values so the pickers are controlled)
+    const [dateFrom, setDateFrom] = useState<dayjs.Dayjs | null>(null);
+    const [dateTo, setDateTo] = useState<dayjs.Dayjs | null>(null);
 
     // Detail modal
     const [detailModal, setDetailModal] = useState<ParkingRemittance | null>(null);
@@ -77,8 +80,8 @@ const ParkingRemittances: React.FC = () => {
         setLoading(true);
         try {
             const params = new URLSearchParams();
-            if (dateFrom) params.append('date_from', dateFrom);
-            if (dateTo) params.append('date_to', dateTo);
+            if (dateFrom) params.append('date_from', dateFrom.format('YYYY-MM-DD'));
+            if (dateTo) params.append('date_to', dateTo.format('YYYY-MM-DD'));
 
             const res = await api.get(`/admin/parking-remittances?${params.toString()}`);
             setRemittances(Array.isArray(res.data) ? res.data : []);
@@ -86,11 +89,13 @@ const ParkingRemittances: React.FC = () => {
             message.error('Failed to load parking remittances.');
         } finally {
             setLoading(false);
+            setInitialLoad(false);
         }
     };
 
     useEffect(() => {
         fetchRemittances();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dateFrom, dateTo]);
 
     // ── Variance helper ───────────────────────────────────────────────────────
@@ -192,7 +197,7 @@ const ParkingRemittances: React.FC = () => {
     ];
 
     // ── Render ────────────────────────────────────────────────────────────────
-    if (loading && remittances.length === 0) {
+    if (initialLoad) {
         return (
             <div className="page-loading">
                 <Spin size="large" tip="Loading parking remittances..." />
@@ -392,19 +397,27 @@ const ParkingRemittances: React.FC = () => {
                     <DatePicker
                         placeholder="Date From"
                         style={{ width: 150 }}
-                        onChange={(d) => setDateFrom(d ? d.format('YYYY-MM-DD') : '')}
+                        value={dateFrom}
+                        onChange={(d) => setDateFrom(d)}
+                        disabledDate={(current) =>
+                            !!dateTo && current.isAfter(dateTo, 'day')
+                        }
                     />
 
                     <DatePicker
                         placeholder="Date To"
                         style={{ width: 150 }}
-                        onChange={(d) => setDateTo(d ? d.format('YYYY-MM-DD') : '')}
+                        value={dateTo}
+                        onChange={(d) => setDateTo(d)}
+                        disabledDate={(current) =>
+                            !!dateFrom && current.isBefore(dateFrom, 'day')
+                        }
                     />
 
                     <Button
                         onClick={() => {
-                            setDateFrom('');
-                            setDateTo('');
+                            setDateFrom(null);
+                            setDateTo(null);
                         }}
                         size="small"
                     >

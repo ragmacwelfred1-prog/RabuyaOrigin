@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import {
     Table, Button, Modal, Popconfirm, Form, Input, Select, DatePicker, TimePicker,
     Card, Space, Tag, message, Row, Col, Descriptions, Avatar, Spin,
-    Tabs, Tooltip, Alert, Badge, Popover, List, Upload, Divider,
+    Tabs, Tooltip, Alert, Badge, Popover, List, Upload, Divider, Empty,
 } from 'antd';
 import {
     PlusOutlined, CheckCircleOutlined, CarOutlined, UserOutlined,
@@ -202,6 +202,64 @@ const ReceiptRow: React.FC<{ label: string; value: string; bold?: boolean }> = (
     </div>
 );
 
+/* ─── LIVE TIME HELPERS ────────────────────────────────────────────────── */
+const useNow = (intervalMs = 1000) => {
+    const [now, setNow] = useState(dayjs());
+    useEffect(() => {
+        const id = setInterval(() => setNow(dayjs()), intervalMs);
+        return () => clearInterval(id);
+    }, [intervalMs]);
+    return now;
+};
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+const fmtDuration = (ms: number) => {
+    const t = Math.floor(Math.abs(ms) / 1000);
+    const d = Math.floor(t / 86400);
+    const h = Math.floor((t % 86400) / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = t % 60;
+    return `${d > 0 ? `${d}d ` : ''}${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+};
+
+const LiveClock: React.FC = () => {
+    const now = useNow(1000);
+    return (
+        <Tag icon={<ClockCircleOutlined />} color="processing"
+            style={{ margin: 0, fontFamily: 'monospace', fontSize: 12 }}>
+            {now.format('ddd, MMM DD YYYY • hh:mm:ss A')}
+        </Tag>
+    );
+};
+
+const CheckoutCountdown: React.FC<{ date: string; time: string }> = ({ date, time }) => {
+    const now = useNow(1000);
+    const ms = dayjs(`${date} ${time}`).diff(now);
+    const tagStyle: React.CSSProperties = { margin: 0, fontFamily: 'monospace', fontWeight: 700 };
+
+    if (ms < 0) {
+        return (
+            <Tag color="error" className="overdue-pulse" icon={<WarningOutlined />} style={tagStyle}>
+                OVERDUE +{fmtDuration(ms)}
+            </Tag>
+        );
+    }
+    const soon = ms <= 2 * 3600000; // within 2 hours
+    return (
+        <div>
+            <Tag color={soon ? 'warning' : 'success'} icon={<ClockCircleOutlined />} style={tagStyle}>
+                {fmtDuration(ms)}
+            </Tag>
+            {soon && (
+                <div style={{ fontSize: 10, color: '#F59E0B', marginTop: 2 }}>
+                    Checkout soon – extend if needed
+                </div>
+            )}
+        </div>
+    );
+};
+
 /* ════════════════════════════════════════════════════════════════════════
    COMPONENT
    ════════════════════════════════════════════════════════════════════════ */
@@ -244,6 +302,7 @@ const Customers: React.FC = () => {
     const [extendModal, setExtendModal] = useState<ParkingTransaction | null>(null);
     const [extending, setExtending] = useState(false);
     const [extendForm] = Form.useForm();
+    const [extendHours, setExtendHours] = useState<number | null>(null);
 
     const [searchText, setSearchText] = useState('');
     const [custSearch, setCustSearch] = useState('');
@@ -255,6 +314,7 @@ const Customers: React.FC = () => {
     const [searchResults, setSearchResults] = useState<Customer[]>([]);
     const [searchKW, setSearchKW] = useState('');
     const [searching, setSearching] = useState(false);
+    const [hasSearched, setHasSearched] = useState(false);
 
     const [viewPaymentModal, setViewPaymentModal] = useState<Booking | null>(null);
 
@@ -273,6 +333,9 @@ const Customers: React.FC = () => {
 
     const isAdmin = localStorage.getItem('user_type') === 'admin';
     const mountedRef = useRef(true);
+
+    // Refreshes row highlighting / overdue count every 15s
+    const nowTick = useNow(15000);
 
     useEffect(() => {
         mountedRef.current = true;
@@ -305,6 +368,9 @@ const Customers: React.FC = () => {
     const totalCustomers = allCustomers.length;
     const totalPending = pendingBookings.length;
     const totalActive = transactions.length;
+    const overdueTransactions = transactions.filter((t) =>
+        dayjs(`${t.expected_checkout_date} ${t.expected_checkout_time}`).isBefore(nowTick),
+    );
     const withLicense = allCustomers.filter((c) => c.license_number || c.license_photo).length;
     const licenseExpiringSoon = allCustomers.filter((c) => {
         if (!c.license_expiration) return false;
@@ -411,21 +477,22 @@ const Customers: React.FC = () => {
         }));
         active.forEach((tx) => {
             const co = dayjs(`${tx.expected_checkout_date} ${tx.expected_checkout_time}`);
-            const h = co.diff(now, 'hour');
+            // minutes / 60 so someone only minutes overdue is still flagged
+            const h = co.diff(now, 'minute') / 60;
             if (h < 0) notifs.push({
                 id: `o-${tx.id}`, type: 'overdue_checkout', title: 'Overdue!',
                 message: `${getFullName(tx.customer)} – ${Math.abs(Math.round(h))}h overdue`,
                 customer_name: getFullName(tx.customer), slot_number: tx.parking_slot?.slot_number ?? 'N/A',
                 time: `${Math.abs(Math.round(h))}h ago`, targetTab: 'active', targetId: tx.id, urgency: 'high',
             });
-            else if (h <= 24) notifs.push({
+            else if (co.isSame(now, 'day')) notifs.push({
                 id: `t-${tx.id}`, type: 'today_checkout', title: 'Checkout Today',
                 message: `${getFullName(tx.customer)} – in ${Math.round(h)}h`,
                 customer_name: getFullName(tx.customer), slot_number: tx.parking_slot?.slot_number ?? 'N/A',
                 time: `In ${Math.round(h)}h`, targetTab: 'active', targetId: tx.id, urgency: 'medium',
             });
             else if (h <= 48) notifs.push({
-                id: `s-${tx.id}`, type: 'soon_checkout', title: 'Checkout Soon',
+                id: `s-${tx.id}`, type: 'soon_checkout', title: co.isSame(now.add(1, 'day'), 'day') ? 'Checkout Tomorrow' : 'Checkout Soon',
                 message: `${getFullName(tx.customer)} – in ${Math.round(h)}h`,
                 customer_name: getFullName(tx.customer), slot_number: tx.parking_slot?.slot_number ?? 'N/A',
                 time: `In ${Math.round(h)}h`, targetTab: 'active', targetId: tx.id, urgency: 'low',
@@ -673,7 +740,7 @@ const Customers: React.FC = () => {
         }
     };
 
-        const deleteBooking = async (id: number) => {
+    const deleteBooking = async (id: number) => {
         setDeletingId(id);
         try {
             const r = await api.delete(`/admin/bookings/${id}`);
@@ -803,7 +870,18 @@ const Customers: React.FC = () => {
         const cur = dayjs(`${tx.expected_checkout_date} ${tx.expected_checkout_time}`);
         const start = (cur.isAfter(dayjs()) ? cur : dayjs()).add(1, 'day');
         extendForm.setFieldsValue({ check_out_date: start, check_out_time: cur });
+        setExtendHours(null);
         setExtendModal(tx);
+    };
+
+    // Adds N hours to the current checkout (or to "now" if already overdue)
+    const applyExtendHours = (hours: number) => {
+        if (!extendModal) return;
+        const cur = dayjs(`${extendModal.expected_checkout_date} ${extendModal.expected_checkout_time}`);
+        const base = cur.isAfter(dayjs()) ? cur : dayjs();
+        const next = base.add(hours, 'hour');
+        extendForm.setFieldsValue({ check_out_date: next, check_out_time: next });
+        setExtendHours(hours);
     };
 
     const handleExtend = async (values: any) => {
@@ -822,14 +900,37 @@ const Customers: React.FC = () => {
         } finally { setExtending(false); }
     };
 
-    const searchCustomers = async () => {
-        if (!searchKW.trim()) { message.warning('Enter a keyword.'); return; }
+    // Customers may carry vehicles in a `vehicles` array or as flat fields
+    const getCustomerVehicles = (c: Customer): Vehicle[] => {
+        if (c.vehicles?.length) return c.vehicles;
+        if (c.plate_number) {
+            return [{ id: 0, plate_number: c.plate_number, vehicle_model: c.vehicle_model ?? '' }];
+        }
+        return [];
+    };
+
+    const openSearchCustomer = () => {
+        setSearchKW('');
+        setSearchResults([]);
+        setHasSearched(false);
+        setSearchCustModal(true);
+    };
+
+    const searchCustomers = async (value?: string) => {
+        const kw = (value ?? searchKW).trim();
+        if (!kw) { message.warning('Enter a keyword.'); return; }
         setSearching(true);
         try {
-            const r = await api.get('/customers/search', { params: { keyword: searchKW } });
-            setSearchResults(Array.isArray(r.data) ? r.data : []);
-        } catch { message.error('Search failed.'); }
-        finally { setSearching(false); }
+            const r = await api.get('/customers/search', { params: { keyword: kw } });
+            const list = Array.isArray(r.data) ? r.data : (r.data?.data ?? []);
+            setSearchResults(list);
+        } catch {
+            message.error('Search failed.');
+            setSearchResults([]);
+        } finally {
+            setSearching(false);
+            setHasSearched(true);
+        }
     };
 
     const selectCustomer = (c: Customer) => {
@@ -837,11 +938,14 @@ const Customers: React.FC = () => {
             message.warning('Customer already has an active parking session.');
             setSearchCustModal(false); return;
         }
+        // Opened from the header (check-in modal not open yet): load defaults first
+        if (!checkinModal) resetCheckinForm();
+        const veh = getCustomerVehicles(c)[0];
         checkinForm.setFieldsValue({
             first_name: c.first_name, middle_name: c.middle_name,
             last_name: c.last_name, phone_number: c.phone_number,
             email: c.email, address: c.address,
-            plate_number: c.plate_number, vehicle_model: c.vehicle_model,
+            plate_number: veh?.plate_number, vehicle_model: veh?.vehicle_model,
         });
         setSearchCustModal(false);
         setCheckinModal(true);
@@ -1051,7 +1155,7 @@ const Customers: React.FC = () => {
                           onClick={() => openCheckinFromApproved(r)} style={{ borderRadius: 6 }}>
                           Check In
                       </Button>
-                                            {isAdmin && (
+                      {isAdmin && (
                           <Popconfirm
                               title="Permanently delete this booking? This cannot be undone."
                               okText="Yes, Delete"
@@ -1086,19 +1190,26 @@ const Customers: React.FC = () => {
         { title: 'Expected Out', key: 'eo', width: 160,
           render: (_: any, r: ParkingTransaction) => {
               const co = dayjs(`${r.expected_checkout_date} ${r.expected_checkout_time}`);
-              const h = co.diff(dayjs(), 'hour');
-              const ov = h < 0; const tod = h >= 0 && h <= 24;
+              const ms = co.diff(dayjs());
+              const ov = ms < 0;
+              const tod = !ov && co.isSame(dayjs(), 'day');
+              const tom = !ov && co.isSame(dayjs().add(1, 'day'), 'day');
               return (
                   <div style={{ fontSize: 13 }}>
                       <div style={{ color: 'var(--text-primary)' }}>{fmtDate(r.expected_checkout_date)}</div>
-                      <div style={{ fontSize: 11, color: ov ? '#EF4444' : tod ? '#F59E0B' : 'var(--text-secondary)' }}>
+                      <div style={{ fontSize: 11, color: ov ? '#EF4444' : (tod || tom) ? '#F59E0B' : 'var(--text-secondary)' }}>
                           {fmtTime(r.expected_checkout_time)}
                           {ov && <Tag color="error" style={{ marginLeft: 4, fontSize: 10 }}>Overdue</Tag>}
-                          {tod && !ov && <Tag color="warning" style={{ marginLeft: 4, fontSize: 10 }}>Today</Tag>}
+                          {tod && <Tag color="warning" style={{ marginLeft: 4, fontSize: 10 }}>Today</Tag>}
+                          {tom && <Tag color="gold" style={{ marginLeft: 4, fontSize: 10 }}>Tomorrow</Tag>}
                       </div>
                   </div>
               );
           } },
+        { title: 'Time Left', key: 'tl', width: 190,
+          render: (_: any, r: ParkingTransaction) => (
+              <CheckoutCountdown date={r.expected_checkout_date} time={r.expected_checkout_time} />
+          ) },
         { title: 'Nights', key: 'n', align: 'center', width: 80,
           render: (_: any, r: ParkingTransaction) => <Tag color="blue" style={{ margin: 0 }}>{r.expected_nights}n</Tag> },
         { title: 'Est. Amount', key: 'amt', align: 'right', width: 120,
@@ -1122,7 +1233,7 @@ const Customers: React.FC = () => {
               <Space size="small">
                   <Button size="small" icon={<ClockCircleOutlined />}
                       onClick={() => openExtend(r)} style={{ borderRadius: 6 }}>Extend</Button>
-                  <Tooltip title={isAdmin ? 'Process checkout' : 'Admin only'}>
+                  <Tooltip title={isAdmin ? 'Process checkout' : 'Admin only'} color={'black'}>
                       <Button type="primary" size="small" icon={isAdmin ? <CheckCircleOutlined /> : <LockOutlined />}
                           onClick={() => openCheckout(r)} disabled={!isAdmin} style={{ borderRadius: 6 }}>
                           Check Out
@@ -1236,7 +1347,7 @@ const Customers: React.FC = () => {
                   <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                           {photoUrl && (
-                              <Tooltip title="Click to view full size">
+                              <Tooltip title="Click to view full size" color={'black'}>
                                   <div onClick={() => openPhotoViewer(photoUrl, r.license_photo_original_name, getFullNameFull(r))}
                                       style={{ cursor: 'pointer', width: 44, height: 44, borderRadius: 6, overflow: 'hidden',
                                           border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center',
@@ -1325,27 +1436,27 @@ const Customers: React.FC = () => {
               const photoUrl = r.license_photo_url || computeLicenseUrl(r.license_photo);
               return (
                   <Space size={4}>
-                      <Tooltip title="View Details">
+                      <Tooltip title="View Details" color={'black'}>
                           <Button type="text" size="small" icon={<EyeOutlined />}
                               onClick={() => handleViewCustomer(r)}
                               style={{ color: 'var(--primary)', border: 'none', background: 'transparent' }} />
                       </Tooltip>
                       {photoUrl && (
-                          <Tooltip title="View License Photo">
+                          <Tooltip title="View License Photo" color={'black'}>
                               <Button type="text" size="small" icon={<FileImageOutlined />}
                                   onClick={() => openPhotoViewer(photoUrl, r.license_photo_original_name, getFullNameFull(r))}
                                   style={{ color: '#8B5CF6', border: 'none', background: 'transparent' }} />
                           </Tooltip>
                       )}
                       {isAdmin && (
-                          <Tooltip title="Edit Customer">
+                          <Tooltip title="Edit Customer" color={'black'}>
                               <Button type="text" size="small" icon={<EditOutlined />}
                                   onClick={() => handleEditCustomer(r)}
                                   style={{ color: 'var(--success)', border: 'none', background: 'transparent' }} />
                           </Tooltip>
                       )}
                       {isAdmin && (
-                          <Tooltip title={isCustomerActive(r) ? 'Deactivate Account' : 'Activate Account'}>
+                          <Tooltip title={isCustomerActive(r) ? 'Deactivate Account' : 'Activate Account'} color={'black'}>
                               <Button type="text" size="small"
                                   icon={isCustomerActive(r) ? <CloseCircleOutlined /> : <CheckCircleOutlined />}
                                   onClick={() => toggleCustomerStatus(r)}
@@ -1398,14 +1509,31 @@ const Customers: React.FC = () => {
           label: (
               <span style={{ color: 'var(--text-secondary)' }}>
                   <CarOutlined /> Active ({transactions.length})
+                  {overdueTransactions.length > 0 && (
+                      <Badge count={overdueTransactions.length}
+                          style={{ backgroundColor: '#EF4444', marginLeft: 6 }}
+                          title="Past checkout time" />
+                  )}
               </span>
           ),
           children: (
               <>
-                  <Input.Search placeholder="Search name, phone, plate, slot, txn#…" allowClear
-                      value={activeSearch} onChange={(e) => setActiveSearch(e.target.value)}
-                      style={{ width: 320, marginBottom: 16 }} size="small" />
+                  {overdueTransactions.length > 0 && (
+                      <Alert type="error" showIcon icon={<WarningOutlined />} style={{ marginBottom: 12 }}
+                          message={`${overdueTransactions.length} customer${overdueTransactions.length > 1 ? 's are' : ' is'} past checkout time`}
+                          description="Use Extend to update their checkout time, or process Check Out." />
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                      <Input.Search placeholder="Search name, phone, plate, slot, txn#…" allowClear
+                          value={activeSearch} onChange={(e) => setActiveSearch(e.target.value)}
+                          style={{ width: 320 }} size="small" />
+                      <LiveClock />
+                  </div>
                   <Table columns={activeCols} dataSource={filteredTransactions} rowKey="id"
+                      rowClassName={(r) =>
+                          dayjs(`${r.expected_checkout_date} ${r.expected_checkout_time}`).isBefore(nowTick)
+                              ? 'row-overdue' : ''}
                       pagination={{ pageSize: 10, size: 'small' }} size="small"
                       scroll={{ x: 'max-content' }} style={{ width: '100%' }}
                       locale={{ emptyText: 'No active sessions' }} />
@@ -1479,6 +1607,13 @@ const Customers: React.FC = () => {
        ════════════════════════════════════════════════════════════════════ */
     return (
         <div>
+            <style>{`
+                .ant-table-tbody > tr.row-overdue > td { background: rgba(239,68,68,0.08) !important; }
+                .ant-table-tbody > tr.row-overdue > td:first-child { box-shadow: inset 3px 0 0 #EF4444; }
+                @keyframes overduePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+                .overdue-pulse { animation: overduePulse 1.2s ease-in-out infinite; }
+            `}</style>
+
             {/* PAGE HEADER */}
             <div className="page-header">
                 <div>
@@ -1552,7 +1687,7 @@ const Customers: React.FC = () => {
                         style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }}>
                         Refresh
                     </Button>
-                    <Button icon={<SearchOutlined />} onClick={() => setSearchCustModal(true)}
+                    <Button icon={<SearchOutlined />} onClick={openSearchCustomer}
                         size="small"
                         style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }}>
                         Search
@@ -1958,9 +2093,13 @@ const Customers: React.FC = () => {
                 <Form form={checkinForm} layout="vertical" onFinish={handleCheckin} size="small">
                     {!prefillBooking && (
                         <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                                <Divider orientation="left" style={{ margin: 0 }}>Customer Information</Divider>
-                                <Button size="small" icon={<SearchOutlined />} onClick={() => setSearchCustModal(true)}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '8px 0 16px' }}>
+                                <span style={{ fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>
+                                    Customer Information
+                                </span>
+                                <div style={{ flex: 1, minWidth: 0, borderTop: '1px solid var(--border-color, rgba(5, 5, 5, 0.06))' }} />
+                                <Button size="small" icon={<SearchOutlined />} onClick={openSearchCustomer}
+                                    style={{ flexShrink: 0 }}>
                                     Search Existing
                                 </Button>
                             </div>
@@ -2210,9 +2349,48 @@ const Customers: React.FC = () => {
             >
                 {extendModal && (
                     <>
-                        <Alert type="info" showIcon style={{ marginBottom: 16 }}
-                            message={`Current checkout: ${fmtDate(extendModal.expected_checkout_date)} ${fmtTime(extendModal.expected_checkout_time)}`} />
-                        <Form form={extendForm} layout="vertical" onFinish={handleExtend} size="small">
+                        <Alert
+                            type={dayjs(`${extendModal.expected_checkout_date} ${extendModal.expected_checkout_time}`).isBefore(nowTick) ? 'error' : 'info'}
+                            showIcon style={{ marginBottom: 16 }}
+                            message={`Current checkout: ${fmtDate(extendModal.expected_checkout_date)} ${fmtTime(extendModal.expected_checkout_time)}`}
+                            description={
+                                <CheckoutCountdown date={extendModal.expected_checkout_date}
+                                    time={extendModal.expected_checkout_time} />
+                            } />
+                        <Form form={extendForm} layout="vertical" onFinish={handleExtend} size="small"
+                            onValuesChange={() => setExtendHours(null)}>
+
+                            <div style={{ marginBottom: 12 }}>
+                                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                                    Quick extend
+                                </div>
+                                <Space wrap size={6}>
+                                    {[1, 2, 3, 4, 5].map((h) => (
+                                        <Button key={h} size="small"
+                                            type={extendHours === h ? 'primary' : 'default'}
+                                            onClick={() => applyExtendHours(h)}>
+                                            +{h} hr{h > 1 ? 's' : ''}
+                                        </Button>
+                                    ))}
+                                </Space>
+                            </div>
+
+                            <Form.Item noStyle shouldUpdate>
+                                {() => {
+                                    const d = extendForm.getFieldValue('check_out_date');
+                                    const t = extendForm.getFieldValue('check_out_time');
+                                    if (!d || !t) return null;
+                                    const next = dayjs(`${d.format('YYYY-MM-DD')} ${t.format('HH:mm:ss')}`);
+                                    return (
+                                        <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text-secondary)' }}>
+                                            New checkout: <strong style={{ color: 'var(--text-primary)' }}>
+                                                {next.format('MMM DD, YYYY hh:mm A')}
+                                            </strong>
+                                        </div>
+                                    );
+                                }}
+                            </Form.Item>
+
                             <Row gutter={12}>
                                 <Col span={12}>
                                     <Form.Item name="check_out_date" label="New Check-Out Date" rules={[{ required: true }]}>
@@ -2245,42 +2423,99 @@ const Customers: React.FC = () => {
                     </Space>
                 }
                 open={searchCustModal} onCancel={() => setSearchCustModal(false)}
-                footer={null} width={560} destroyOnClose
+                footer={null} width={600} destroyOnClose centered
+                styles={{ body: { paddingTop: 8 } }}
             >
-                <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
-                    <Input placeholder="Search by name, phone, plate…" value={searchKW}
-                        onChange={(e) => setSearchKW(e.target.value)} onPressEnter={searchCustomers} allowClear />
-                    <Button type="primary" icon={<SearchOutlined />} loading={searching} onClick={searchCustomers}>
-                        Search
-                    </Button>
-                </Space.Compact>
-                {searchResults.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-secondary)' }}>
-                        {searching ? 'Searching…' : 'No results yet. Enter a keyword to search.'}
-                    </div>
-                ) : (
-                    <List size="small" dataSource={searchResults}
-                        renderItem={(c) => (
-                            <List.Item
-                                actions={[
-                                    <Button key="select" type="primary" size="small" onClick={() => selectCustomer(c)}>
-                                        Select
-                                    </Button>,
-                                ]}
-                            >
-                                <List.Item.Meta
-                                    avatar={<Avatar icon={<UserOutlined />} />}
-                                    title={<span style={{ fontWeight: 600 }}>{getFullNameFull(c)}</span>}
-                                    description={
-                                        <div style={{ fontSize: 11 }}>
-                                            {c.phone_number} • {c.plate_number ?? 'No vehicle'} • {c.vehicle_model ?? ''}
-                                        </div>
-                                    }
-                                />
-                            </List.Item>
-                        )}
-                    />
-                )}
+                <Input.Search
+                    placeholder="Search by name, phone, plate…"
+                    value={searchKW}
+                    onChange={(e) => setSearchKW(e.target.value)}
+                    onSearch={(v, _e, info) => {
+                        if (info?.source === 'clear') {
+                            setSearchResults([]);
+                            setHasSearched(false);
+                            return;
+                        }
+                        searchCustomers(v);
+                    }}
+                    enterButton="Search"
+                    loading={searching}
+                    allowClear
+                    autoFocus
+                    style={{ marginBottom: 16 }}
+                />
+
+                <div style={{ maxHeight: 380, overflowY: 'auto', overflowX: 'hidden' }}>
+                    {searching ? (
+                        <div style={{ textAlign: 'center', padding: 32 }}>
+                            <Spin />
+                        </div>
+                    ) : !hasSearched ? (
+                        <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-secondary)' }}>
+                            Type a name, phone or plate number, then press Enter.
+                        </div>
+                    ) : searchResults.length === 0 ? (
+                        <Empty description="No customers found" />
+                    ) : (
+                        <List size="small" dataSource={searchResults} rowKey="id"
+                            renderItem={(c) => {
+                                const vehicles = getCustomerVehicles(c);
+                                const alreadyParked = transactions.some((t) => t.customer_id === c.id);
+                                return (
+                                    <List.Item
+                                        style={{ padding: '10px 4px' }}
+                                        actions={[
+                                            <Button key="select" type="primary" size="small"
+                                                disabled={alreadyParked}
+                                                onClick={() => selectCustomer(c)}>
+                                                {alreadyParked ? 'Parked' : 'Select'}
+                                            </Button>,
+                                        ]}
+                                    >
+                                        <List.Item.Meta
+                                            avatar={<Avatar icon={<UserOutlined />} />}
+                                            title={
+                                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                    {getFullNameFull(c)}
+                                                </span>
+                                            }
+                                            description={
+                                                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                                                    <div>{c.phone_number}</div>
+                                                    <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                                        {vehicles.length === 0 ? (
+                                                            <span style={{ color: 'var(--text-tertiary)' }}>
+                                                                No vehicle on file
+                                                            </span>
+                                                        ) : (
+                                                            vehicles.slice(0, 3).map((v, i) => (
+                                                                <Tag key={`${v.plate_number}-${i}`} icon={<CarOutlined />}
+                                                                    style={{ margin: 0, fontFamily: 'monospace' }}>
+                                                                    {v.plate_number}
+                                                                    {v.vehicle_model ? ` • ${v.vehicle_model}` : ''}
+                                                                </Tag>
+                                                            ))
+                                                        )}
+                                                        {vehicles.length > 3 && (
+                                                            <span style={{ color: 'var(--text-tertiary)' }}>
+                                                                +{vehicles.length - 3} more
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {alreadyParked && (
+                                                        <div style={{ marginTop: 4, color: '#F59E0B' }}>
+                                                            Already has an active parking session
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            }
+                                        />
+                                    </List.Item>
+                                );
+                            }}
+                        />
+                    )}
+                </div>
             </Modal>
 
             {/* ─── VIEW PAYMENT MODAL ─────────────────────────────────────── */}

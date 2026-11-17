@@ -357,7 +357,7 @@ const Header: React.FC = () => {
             </div>
 
             <div className="header-right">
-                <Tooltip
+                <Tooltip color={'black'}
                     title={
                         soundEnabled
                             ? 'Sound is ON - Click to mute'
@@ -476,6 +476,7 @@ const Header: React.FC = () => {
                 </Popover>
 
                 <button
+                color='black'
                     type="button"
                     className="theme-toggle-btn"
                     aria-pressed={isDark}
