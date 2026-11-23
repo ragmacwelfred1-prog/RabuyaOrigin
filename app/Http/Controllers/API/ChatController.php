@@ -12,18 +12,6 @@ use Illuminate\Support\Facades\Log;
 
 class ChatController extends Controller
 {
-    // ─── Helper: determine the peer (kausap) of the viewer ────────────────────
-    private function peerFor(User $viewer, Conversation $c): ?User
-    {
-        if ($c->type === 'staff') {
-            // admin ang kausap ni staff, staff ang kausap ni admin
-            return $viewer->role === 'admin'
-                ? $c->customer
-                : ($c->staff ?? User::where('role', 'admin')->first());
-        }
-        return $c->customer;
-    }
-
     // ─── Access rule ──────────────────────────────────────────────────────────
     private function canAccess(User $user, Conversation $c): bool
     {
@@ -63,7 +51,7 @@ class ChatController extends Controller
         return response()->json(['success' => true, 'conversation' => $conversation]);
     }
 
-    // ─── Contacts ─────────────────────────────────────────────────────────────
+    // ─── Contacts (admin/staff) ───────────────────────────────────────────────
     public function contacts(Request $request)
     {
         $user = $request->user();
@@ -75,7 +63,6 @@ class ChatController extends Controller
         $search = trim((string) $request->query('search', ''));
         $filter = $request->query('role');
 
-        // Admin: customers + staff | Staff: customers + admin
         $roles = $user->role === 'admin' ? ['customer', 'staff'] : ['customer', 'admin'];
         if (in_array($filter, $roles, true)) {
             $roles = [$filter];
@@ -101,13 +88,11 @@ class ChatController extends Controller
 
         $users = $query->get();
 
-        // Conversations keyed by customer_id (customer at staff-for-admin)
         $conversations = Conversation::whereIn('customer_id', $users->where('role', '!=', 'admin')->pluck('id'))
             ->with('latestMessage')
             ->get()
             ->keyBy('customer_id');
 
-        // Para sa STAFF: ang chat nila kay admin = sarili nilang "staff" conversation
         $ownConv = $user->role === 'staff'
             ? Conversation::where('customer_id', $user->id)->with('latestMessage')->first()
             : null;
@@ -169,18 +154,31 @@ class ChatController extends Controller
         return response()->json(['success' => true, 'contacts' => $sorted]);
     }
 
-    // ─── Start / open conversation ────────────────────────────────────────────
+    // ─── Start / open conversation (customer + admin + staff) ─────────────────
     public function startWithContact(Request $request)
     {
         $user = $request->user();
 
+        $request->validate(['contact_id' => 'required|exists:users,id']);
+        $contact = User::findOrFail($request->contact_id);
+
+        // ── CUSTOMER -> STAFF / ADMIN ─────────────────────────────────────
+        if ($user->role === 'customer') {
+            if (!in_array($contact->role, ['admin', 'staff'], true) || !$contact->is_active) {
+                return response()->json(['message' => 'Invalid contact'], 422);
+            }
+
+            $conversation = Conversation::firstOrCreate(
+                ['customer_id' => $user->id],
+                ['staff_id' => $contact->id, 'type' => 'customer']
+            );
+
+            return response()->json(['success' => true, 'conversation' => $conversation]);
+        }
+
         if (!in_array($user->role, ['admin', 'staff'])) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
-
-        $request->validate(['contact_id' => 'required|exists:users,id']);
-
-        $contact = User::findOrFail($request->contact_id);
 
         $allowed = $user->role === 'admin' ? ['customer', 'staff'] : ['customer', 'admin'];
         if (!in_array($contact->role, $allowed, true) || $contact->id === $user->id) {
@@ -214,117 +212,182 @@ class ChatController extends Controller
     }
 
     // ─── List conversations ───────────────────────────────────────────────────
-    // ─── List conversations (kasama ang contacts na wala pang chat) ───────────
-public function index(Request $request)
-{
-    $user = $request->user();
+    public function index(Request $request)
+    {
+        $user = $request->user();
 
-    if (!in_array($user->role, ['admin', 'staff'])) {
-        return response()->json(['message' => 'Unauthorized'], 403);
-    }
+        if ($user->role === 'customer') {
+            return $this->customerIndex($user);
+        }
 
-    // ─── Step 1: Kunin lahat ng possible contacts ─────────────────────────
-    $roles = $user->role === 'admin' ? ['customer', 'staff'] : ['customer', 'admin'];
+        if (!in_array($user->role, ['admin', 'staff'])) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
-    $contacts = User::whereIn('role', $roles)
-        ->where('is_active', true)
-        ->where('id', '!=', $user->id)
-        ->get();
+        $roles = $user->role === 'admin' ? ['customer', 'staff'] : ['customer', 'admin'];
 
-    $contactIds = $contacts->pluck('id');
+        $contacts = User::whereIn('role', $roles)
+            ->where('is_active', true)
+            ->where('id', '!=', $user->id)
+            ->get();
 
-    // ─── Step 2: Kunin lahat ng conversations (customers + own staff conv) ─
-    $conversations = Conversation::with([
-            'customer:id,first_name,last_name,email,phone_number,role',
-            'latestMessage.sender:id,first_name,last_name,role',
-            'staff:id,first_name,last_name,role',
-        ])
-        ->where(function ($q) use ($user, $contactIds) {
-            // Customer conversations (lahat ng customers)
-            $q->where(function ($w) use ($contactIds) {
-                $w->where('type', 'customer')
-                  ->whereIn('customer_id', $contactIds);
+        $contactIds = $contacts->pluck('id');
+
+        $conversations = Conversation::with([
+                'customer:id,first_name,last_name,email,phone_number,role',
+                'latestMessage.sender:id,first_name,last_name,role',
+                'staff:id,first_name,last_name,role',
+            ])
+            ->where(function ($q) use ($user, $contactIds) {
+                $q->where(function ($w) use ($contactIds) {
+                    $w->where('type', 'customer')
+                      ->whereIn('customer_id', $contactIds);
+                });
+
+                if ($user->role === 'staff') {
+                    $q->orWhere(function ($w) use ($user) {
+                        $w->where('type', 'staff')
+                          ->where('customer_id', $user->id);
+                    });
+                }
+
+                if ($user->role === 'admin') {
+                    $q->orWhere('type', 'staff');
+                }
+            })
+            ->get()
+            ->keyBy(function ($c) use ($user) {
+                if ($c->type === 'staff') {
+                    return $user->role === 'admin'
+                        ? (int) $c->customer_id
+                        : (int) ($c->staff_id ?? 0);
+                }
+                return (int) $c->customer_id;
             });
 
-            // Own staff conversation (staff ↔ admin)
-            if ($user->role === 'staff') {
-                $q->orWhere(function ($w) use ($user) {
-                    $w->where('type', 'staff')
-                      ->where('customer_id', $user->id);
-                });
-            }
+        $convIds = $conversations->pluck('id');
 
-            // Para sa admin: lahat ng staff conversations
-            if ($user->role === 'admin') {
-                $q->orWhere('type', 'staff');
-            }
-        })
-        ->get()
-        ->keyBy(function ($c) use ($user) {
-            // I-key by "peer id" para madaling i-match sa contacts
-            if ($c->type === 'staff') {
-                return $user->role === 'admin'
-                    ? (int) $c->customer_id       // admin → staff
-                    : (int) ($c->staff_id ?? 0);  // staff → admin
-            }
-            return (int) $c->customer_id;          // customer
+        $unreadMap = Message::selectRaw('conversation_id, COUNT(*) as c')
+            ->whereIn('conversation_id', $convIds)
+            ->where('sender_id', '!=', $user->id)
+            ->where('is_read', false)
+            ->groupBy('conversation_id')
+            ->pluck('c', 'conversation_id');
+
+        $items = $contacts->map(function (User $u) use ($conversations, $unreadMap) {
+            $conv = $conversations->get((int) $u->id);
+
+            return [
+                'id'              => $conv?->id ?? ('contact-' . $u->id),
+                'conversation_id' => $conv?->id,
+                'contact'         => [
+                    'id'           => $u->id,
+                    'role'         => $u->role,
+                    'full_name'    => trim($u->first_name . ' ' . $u->last_name),
+                    'email'        => $u->email,
+                    'phone_number' => $u->phone_number,
+                    'employee_id'  => $u->employee_id,
+                ],
+                'has_chat'        => (bool) $conv,
+                'unread_count'    => (int) ($unreadMap[$conv?->id] ?? 0),
+                'latest_message'  => $conv?->latestMessage ? [
+                    'body'       => $conv->latestMessage->body,
+                    'sender_id'  => $conv->latestMessage->sender_id,
+                    'created_at' => $conv->latestMessage->created_at,
+                ] : null,
+                'last_message_at' => $conv?->last_message_at,
+                'customer'        => $conv?->customer,
+                'staff'           => $conv?->staff,
+            ];
         });
 
-    // ─── Step 3: Unread counts ────────────────────────────────────────────
-    $convIds = $conversations->pluck('id');
+        $sorted = $items->sort(function ($a, $b) {
+            if (($a['unread_count'] > 0) !== ($b['unread_count'] > 0)) {
+                return $a['unread_count'] > 0 ? -1 : 1;
+            }
+            if ($a['has_chat'] !== $b['has_chat']) {
+                return $a['has_chat'] ? -1 : 1;
+            }
+            if ($a['has_chat'] && $b['has_chat']) {
+                return strcmp((string) $b['last_message_at'], (string) $a['last_message_at']);
+            }
+            return strcasecmp($a['contact']['full_name'], $b['contact']['full_name']);
+        })->values();
 
-    $unreadMap = Message::selectRaw('conversation_id, COUNT(*) as c')
-        ->whereIn('conversation_id', $convIds)
-        ->where('sender_id', '!=', $user->id)
-        ->where('is_read', false)
-        ->groupBy('conversation_id')
-        ->pluck('c', 'conversation_id');
+        return response()->json(['success' => true, 'conversations' => $sorted]);
+    }
 
-    // ─── Step 4: I-merge ang contacts + conversations ─────────────────────
-    $items = $contacts->map(function (User $u) use ($conversations, $unreadMap, $user) {
-        $conv = $conversations->get((int) $u->id);
+    // ─── Customer view: ALL active admin + staff, with per-account chat state ─
+    private function customerIndex(User $user)
+    {
+        $contacts = User::whereIn('role', ['admin', 'staff'])
+            ->where('is_active', true)
+            ->orderByRaw("CASE WHEN role = 'admin' THEN 0 ELSE 1 END")
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get();
 
-        return [
-            'id'              => $conv?->id ?? ('contact-' . $u->id), // unique key
-            'conversation_id' => $conv?->id,
-            'contact'         => [
-                'id'        => $u->id,
-                'role'      => $u->role,
-                'full_name' => trim($u->first_name . ' ' . $u->last_name),
-                'email'     => $u->email,
-                'phone_number' => $u->phone_number,
-                'employee_id'  => $u->employee_id,
-            ],
-            'has_chat'        => (bool) $conv,
-            'unread_count'    => (int) ($unreadMap[$conv?->id] ?? 0),
-            'latest_message'  => $conv?->latestMessage ? [
-                'body'       => $conv->latestMessage->body,
-                'sender_id'  => $conv->latestMessage->sender_id,
-                'created_at' => $conv->latestMessage->created_at,
-            ] : null,
-            'last_message_at' => $conv?->last_message_at,
-            // Para sa compatibility sa lumang frontend
-            'customer'        => $conv?->customer,
-            'staff'           => $conv?->staff,
-        ];
-    });
+        // 1 conversation lang per customer (unique customer_id)
+        $conv = Conversation::with('latestMessage')
+            ->where('customer_id', $user->id)
+            ->first();
 
-    // ─── Step 5: Sort — unread → may chat → alphabetical ──────────────────
-    $sorted = $items->sort(function ($a, $b) {
-        if (($a['unread_count'] > 0) !== ($b['unread_count'] > 0)) {
-            return $a['unread_count'] > 0 ? -1 : 1;
+        $unreadBySender = collect();
+        $latestBySender = collect();
+
+        if ($conv) {
+            // Unread messages galing sa bawat admin/staff
+            $unreadBySender = Message::selectRaw('sender_id, COUNT(*) as c')
+                ->where('conversation_id', $conv->id)
+                ->where('sender_id', '!=', $user->id)
+                ->where('is_read', false)
+                ->groupBy('sender_id')
+                ->pluck('c', 'sender_id');
+
+            // Pinakabagong message ng bawat admin/staff sa conversation
+            $latestBySender = Message::where('conversation_id', $conv->id)
+                ->whereIn('sender_id', $contacts->pluck('id'))
+                ->orderByDesc('id')
+                ->get()
+                ->groupBy('sender_id')
+                ->map(fn ($g) => $g->first());
         }
-        if ($a['has_chat'] !== $b['has_chat']) {
-            return $a['has_chat'] ? -1 : 1;
-        }
-        if ($a['has_chat'] && $b['has_chat']) {
-            return strcmp((string) $b['last_message_at'], (string) $a['last_message_at']);
-        }
-        return strcasecmp($a['contact']['full_name'], $b['contact']['full_name']);
-    })->values();
 
-    return response()->json(['success' => true, 'conversations' => $sorted]);
-}
+        $items = $contacts->map(function (User $u) use ($conv, $unreadBySender, $latestBySender) {
+            $isHandler  = $conv && (int) $conv->staff_id === (int) $u->id;
+            $theirLast  = $latestBySender->get($u->id);
+            $hasChat    = $isHandler || (bool) $theirLast;
+
+            // Handler: ipakita ang pinakabagong message ng buong usapan.
+            // Iba: ipakita ang huling message nila.
+            $last = $isHandler ? $conv?->latestMessage : $theirLast;
+
+            return [
+                'id'              => 'contact-' . $u->id,
+                'conversation_id' => $conv?->id,
+                'contact'         => [
+                    'id'           => $u->id,
+                    'role'         => $u->role,
+                    'full_name'    => trim($u->first_name . ' ' . $u->last_name),
+                    'email'        => $u->email,
+                    'phone_number' => $u->phone_number,
+                    'employee_id'  => $u->employee_id,
+                ],
+                'has_chat'        => $hasChat,
+                'unread_count'    => (int) ($unreadBySender[$u->id] ?? 0),
+                'latest_message'  => $last ? [
+                    'body'       => $last->body,
+                    'sender_id'  => $last->sender_id,
+                    'created_at' => $last->created_at,
+                    'image_path' => $last->image_path,
+                    'image_url'  => $last->image_url,
+                ] : null,
+                'last_message_at' => $last?->created_at,
+            ];
+        })->values();
+
+        return response()->json(['success' => true, 'conversations' => $items]);
+    }
 
     // ─── Get messages ─────────────────────────────────────────────────────────
     public function messages(Request $request, $conversationId)
@@ -351,7 +414,6 @@ public function index(Request $request)
     }
 
     // ─── Send message ─────────────────────────────────────────────────────────
-        // ─── Send message (text or image or both) ────────────────────────────────
     public function send(Request $request, $conversationId)
     {
         $request->validate([
@@ -372,15 +434,15 @@ public function index(Request $request)
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        // Ang huling staff/admin na sumagot ang nagiging "handler" ng customer chat
         if (
             $conversation->type === 'customer' &&
             in_array($user->role, ['admin', 'staff']) &&
-            ! $conversation->staff_id
+            (int) $conversation->staff_id !== (int) $user->id
         ) {
             $conversation->update(['staff_id' => $user->id]);
         }
 
-        // ─── Handle image upload ─────────────────────────────────────
         $imagePath = null;
         $imageName = null;
 
@@ -401,7 +463,6 @@ public function index(Request $request)
 
         $conversation->update(['last_message_at' => now()]);
 
-        // Broadcast to other participants (protected — no crash if Reverb is down)
         try {
             broadcast(new MessageSent($message))->toOthers();
         } catch (\Throwable $e) {
@@ -415,6 +476,7 @@ public function index(Request $request)
             'message' => $message,
         ], 201);
     }
+
     // ─── Unread count ─────────────────────────────────────────────────────────
     public function unreadCount(Request $request)
     {

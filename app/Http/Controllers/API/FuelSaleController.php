@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class FuelSaleController extends Controller
 {
@@ -30,6 +31,24 @@ class FuelSaleController extends Controller
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $cacheKey = null;
+        if ($request->filled('client_ref')) {
+            $cacheKey = 'fuel_sale_ref:' . Auth::id() . ':' . $request->client_ref;
+            if ($cached = Cache::get($cacheKey)) {
+                return response()->json($cached);
+            }
+        }
+
+        $saleDate = now();
+        if ($request->filled('sale_date')) {
+            try {
+                $parsed = Carbon::parse($request->sale_date)->setTimezone(config('app.timezone'));
+                $saleDate = $parsed->greaterThan(now()) ? now() : $parsed;
+            } catch (\Throwable $e) {
+                // Keep the current timestamp if the supplied date cannot be parsed.
+            }
         }
 
         DB::beginTransaction();
@@ -83,7 +102,7 @@ class FuelSaleController extends Controller
             $sale = FuelSale::create([
                 'fuel_inventory_id' => $inv->id,
                 'recorded_by'       => Auth::id(),
-                'sale_date'         => now(),
+                'sale_date'         => $saleDate,
                 'liters_sold'       => $litersToSell,
                 'price_per_liter'   => $pricePerLiter,
                 'customer_name'     => $request->customer_name ?? null,
@@ -119,14 +138,20 @@ class FuelSaleController extends Controller
 
             DB::commit();
 
-            return response()->json([
+            $response = [
                 'success'            => true,
                 'message'            => 'Sale recorded!',
                 'transaction'        => ['id' => $sale->id],
                 'transaction_number' => 'FUL-' . str_pad($sale->id, 6, '0', STR_PAD_LEFT),
                 'total_amount'       => $amountPaid,
                 'change'             => $changeAmount,
-            ]);
+            ];
+
+            if ($cacheKey) {
+                Cache::put($cacheKey, $response, now()->addDays(7));
+            }
+
+            return response()->json($response);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Sale error: ' . $e->getMessage());
