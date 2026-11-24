@@ -1435,4 +1435,16 @@ html:not([data-theme='dark']) .header .ant-badge-count {
     .ant-btn-primary:hover {
         transform: none !important;
     }
+
+    /* ─── TOOLTIPS ─────────────────────────────────────────────────────────── */
+/* All tooltips: black background, white text, in both light and dark mode */
+.ant-tooltip .ant-tooltip-inner {
+    background: #000 !important;
+    color: #fff !important;
+}
+
+.ant-tooltip .ant-tooltip-arrow::before,
+.ant-tooltip .ant-tooltip-arrow::after {
+    background: #000 !important;
+}
 }
