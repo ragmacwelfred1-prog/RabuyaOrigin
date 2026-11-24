@@ -1,4 +1,3 @@
-
 <?php
 
 use App\Models\Conversation;
@@ -10,7 +9,7 @@ use Illuminate\Support\Facades\Broadcast;
 |--------------------------------------------------------------------------
 */
 
-// ✅ Public channel - no auth needed
+// Public channel - no authentication required
 Broadcast::channel('notifications', function () {
     return true;
 });
@@ -31,44 +30,50 @@ Broadcast::channel('admin.parking', function () {
     return true;
 });
 
-// ✅ Private channel - requires auth
+// Private channel - user can only access their own channel
 Broadcast::channel('user.{userId}', function ($user, $userId) {
     return (int) $user->id === (int) $userId;
 });
 
-// Private channel for admins only
+// Admin private channel
 Broadcast::channel('admin.{userId}', function ($user, $userId) {
-    return (int) $user->id === (int) $userId && $user->role === 'admin';
+    return (int) $user->id === (int) $userId
+        && $user->role === 'admin';
 });
 
-// Private channel for staff only
+// Staff private channel
 Broadcast::channel('staff.{userId}', function ($user, $userId) {
-    return (int) $user->id === (int) $userId && in_array($user->role, ['staff', 'admin']);
+    return (int) $user->id === (int) $userId
+        && in_array($user->role, ['staff', 'admin'], true);
 });
 
-// ✅ Chat conversation channel — tightened to match ChatController::canAccess()
+// ─── Chat conversation channel ───────────────────────────────────────────
+
 Broadcast::channel('conversation.{conversationId}', function ($user, $conversationId) {
+
     $conversation = Conversation::find($conversationId);
 
     if (!$conversation) {
         return false;
     }
 
-    // Staff ↔ admin chat: admin OR the staff owner lang
+    // STAFF ↔ ADMIN conversation
+    // Admin can access all staff conversations.
+    // Staff can only access their own conversation with admin.
     if ($conversation->type === 'staff') {
         return $user->role === 'admin'
             || (int) $conversation->customer_id === (int) $user->id;
     }
 
-    // Customer chat: customer owner lang
+    // CUSTOMER conversation
+    // Customers can only access their own conversations.
     if ($user->role === 'customer') {
         return (int) $conversation->customer_id === (int) $user->id;
     }
 
-    // Admin & Staff can join any customer conversation
-    if (in_array($user->role, ['admin', 'staff'])) {
-        return true;
-    }
-
-    return false;
+    // Admin / staff can access customer conversations
+    // only when assigned as the handler (staff_id).
+    return in_array($user->role, ['admin', 'staff'], true)
+        && (int) $conversation->staff_id === (int) $user->id;
 });
+
