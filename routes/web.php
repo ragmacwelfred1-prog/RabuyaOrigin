@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
 // ─── Serve uploaded files (license photos, etc.) kahit walang storage:link
-Route::get('/sfiles/{path}', function (string $path) {
+Route::get('/storage/{path}', function (string $path) {
     abort_if(str_contains($path, '..'), 404);
 
     $disk = Storage::disk('public');
@@ -17,4 +17,4 @@ Route::get('/sfiles/{path}', function (string $path) {
 // ─── SPA catch-all (para sa React routes)
 Route::get('/{any}', function () {
     return view('app');
-})->where('any', '^(?!api|sfiles).*$');
+})->where('any', '^(?!api|storage).*$');

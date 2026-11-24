@@ -1239,7 +1239,7 @@ const Customers: React.FC = () => {
                           Check Out
                       </Button>
                   </Tooltip>
-              </Space>
+              </Space>      
           ) },
     ];
 

@@ -40,6 +40,6 @@ class Message extends Model
         // Relative URL: the web admin resolves it against its own origin, so it
         // no longer depends on APP_URL / http-vs-https. The mobile app builds
         // its own absolute URL from image_path (see resolveImageUrl).
-        return '/sfiles/' . ltrim($this->image_path, '/');
+        return '/storage/' . ltrim($this->image_path, '/');
     }
 }
