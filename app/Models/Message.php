@@ -37,7 +37,9 @@ class Message extends Model
             return null;
         }
 
-        // Serve uploaded chat images through the custom shared-hosting route.
-        return url('/sfiles/' . ltrim($this->image_path, '/'));
+        // Relative URL: the web admin resolves it against its own origin, so it
+        // no longer depends on APP_URL / http-vs-https. The mobile app builds
+        // its own absolute URL from image_path (see resolveImageUrl).
+        return '/sfiles/' . ltrim($this->image_path, '/');
     }
 }
