@@ -37,12 +37,7 @@ class Message extends Model
             return null;
         }
 
-        // Gamitin ang host na ginamit ng request mismo (LAN IP ng phone),
-        // hindi ang APP_URL na localhost.
-        $base = request()
-            ? rtrim(request()->getSchemeAndHttpHost(), '/')
-            : rtrim(config('app.url'), '/');
-
-        return $base . '/storage/' . ltrim($this->image_path, '/');
+        // Serve uploaded chat images through the custom shared-hosting route.
+        return url('/sfiles/' . ltrim($this->image_path, '/'));
     }
 }
