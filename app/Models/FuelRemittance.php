@@ -10,23 +10,18 @@ class FuelRemittance extends Model
     use HasFactory;
 
     protected $fillable = [
-        'staff_id',
-        'remittance_date',
-        'remitted_amount',
-        'actual_sales_amount',
-        'status',
-        'reviewed_at',
+        'staff_id', 'remittance_date', 'remitted_amount', 'actual_sales_amount',
+        'difference', 'status', 'reviewed_by', 'reject_reason', 'reviewed_at',
     ];
 
     protected $casts = [
-        'remittance_date' => 'date',
-        'remitted_amount' => 'decimal:2',
+        'remittance_date'     => 'date',
+        'remitted_amount'     => 'decimal:2',
         'actual_sales_amount' => 'decimal:2',
-        'reviewed_at' => 'datetime',
+        'difference'          => 'decimal:2',
+        'reviewed_at'         => 'datetime',
     ];
 
-    public function staff()
-    {
-        return $this->belongsTo(User::class, 'staff_id');
-    }
+    public function staff()    { return $this->belongsTo(User::class, 'staff_id'); }
+    public function reviewer() { return $this->belongsTo(User::class, 'reviewed_by'); }
 }

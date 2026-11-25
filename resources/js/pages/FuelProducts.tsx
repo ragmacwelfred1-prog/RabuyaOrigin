@@ -36,10 +36,14 @@ import {
     CheckOutlined,
     EyeOutlined,
     ReloadOutlined,
-    CheckCircleOutlined,
 } from '@ant-design/icons';
 import api from '../services/api';
 import dayjs, { Dayjs } from 'dayjs';
+import {
+    RemittanceDetailModal,
+    RemittanceStatusTag,
+    VarianceTag,
+} from '../components/RemittanceShared';
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -87,10 +91,13 @@ interface Remittance {
         last_name: string;
         email: string;
     };
+    reviewer?: { first_name: string; last_name: string } | null;
     remittance_date: string;
     remitted_amount: number;
     actual_sales_amount: number;
+    difference: number;
     status: 'pending' | 'approved' | 'rejected';
+    reject_reason?: string | null;
     reviewed_at: string | null;
     created_at: string;
 }
@@ -257,6 +264,7 @@ const FuelProducts: React.FC = () => {
     const [remFilters, setRemFilters] = useState({
         date_from: '',
         date_to: '',
+        status: '',
     });
     const [remModalVisible, setRemModalVisible] = useState(false);
     const [selectedRemittance, setSelectedRemittance] =
@@ -382,6 +390,8 @@ const FuelProducts: React.FC = () => {
                 params.append('date_from', remFilters.date_from);
             if (remFilters.date_to)
                 params.append('date_to', remFilters.date_to);
+            if (remFilters.status)
+                params.append('status', remFilters.status);
             const res = await api.get(
                 `/admin/remittances?${params.toString()}`,
             );
@@ -970,113 +980,83 @@ const FuelProducts: React.FC = () => {
         },
     ];
 
-    // ✅ Read-only remittance columns — no approve/reject
     const remittanceColumns = [
         {
             title: 'Staff',
             key: 'staff',
-            render: (_: any, record: Remittance) => (
-                <Space>
-                    <span style={{ color: 'var(--text-primary)' }}>
-                        {record.staff?.first_name} {record.staff?.last_name}
-                    </span>
-                    <span
-                        style={{ color: 'var(--text-tertiary)', fontSize: 12 }}
-                    >
-                        ({record.staff?.email})
+            render: (_: any, r: Remittance) => (
+                <Space direction="vertical" size={0}>
+                    <b style={{ color: 'var(--text-primary)' }}>
+                        {r.staff?.first_name} {r.staff?.last_name}
+                    </b>
+                    <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>
+                        {r.staff?.email}
                     </span>
                 </Space>
             ),
         },
         {
-            title: 'Remittance Date',
+            title: 'Date',
             dataIndex: 'remittance_date',
             key: 'date',
-            render: (date: string) => (
-                <span style={{ color: 'var(--text-secondary)' }}>
-                    {dayjs(date).format('YYYY-MM-DD')}
-                </span>
-            ),
+            render: (d: string) => dayjs(d).format('YYYY-MM-DD'),
         },
         {
-            title: 'Remitted Amount',
+            title: 'Expected',
+            dataIndex: 'actual_sales_amount',
+            key: 'expected',
+            align: 'right' as const,
+            render: (n: number) => formatCurrency(Number(n)),
+        },
+        {
+            title: 'Remitted',
             dataIndex: 'remitted_amount',
             key: 'remitted',
-            render: (amount: number) => (
+            align: 'right' as const,
+            render: (n: number) => (
                 <span style={{ fontWeight: 600, color: 'var(--success)' }}>
-                    {formatCurrency(amount)}
+                    {formatCurrency(Number(n))}
                 </span>
             ),
         },
         {
-            title: 'Actual Sales',
-            dataIndex: 'actual_sales_amount',
-            key: 'actual',
-            render: (amount: number, record: Remittance) => {
-                const diff =
-                    record.actual_sales_amount - record.remitted_amount;
-                const isMatch = Math.abs(diff) < 0.01;
-                return (
-                    <Space>
-                        <span style={{ color: 'var(--text-primary)' }}>
-                            {formatCurrency(amount)}
-                        </span>
-                        {!isMatch && (
-                            <Tag
-                                color={diff > 0 ? 'red' : 'orange'}
-                                style={{ margin: 0 }}
-                            >
-                                {diff > 0
-                                    ? `Short by ${formatCurrency(diff)}`
-                                    : `Over by ${formatCurrency(Math.abs(diff))}`}
-                            </Tag>
-                        )}
-                        {isMatch && (
-                            <Tag color="green" style={{ margin: 0 }}>
-                                Exact Match
-                            </Tag>
-                        )}
-                    </Space>
-                );
-            },
+            title: 'Difference',
+            dataIndex: 'difference',
+            key: 'diff',
+            align: 'center' as const,
+            render: (d: number) => <VarianceTag difference={d} />,
         },
         {
             title: 'Status',
             dataIndex: 'status',
             key: 'status',
-            render: () => (
-                <Tag
-                    icon={<CheckCircleOutlined />}
-                    color="success"
-                    style={{ margin: 0 }}
-                >
-                    AUTO-APPROVED
-                </Tag>
-            ),
+            align: 'center' as const,
+            render: (s: Remittance['status']) => <RemittanceStatusTag status={s} />,
         },
         {
             title: 'Submitted',
             dataIndex: 'created_at',
             key: 'created',
-            render: (date: string) => (
+            render: (d: string) => (
                 <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-                    {dayjs(date).format('YYYY-MM-DD HH:mm')}
+                    {dayjs(d).format('YYYY-MM-DD HH:mm')}
                 </span>
             ),
         },
         {
             title: 'Action',
             key: 'action',
-            width: 100,
+            width: 110,
             align: 'center' as const,
-            render: (_: any, record: Remittance) => (
+            render: (_: any, r: Remittance) => (
                 <Button
                     size="small"
+                    type={r.status === 'pending' ? 'primary' : 'default'}
                     icon={<EyeOutlined />}
-                    onClick={() => handleViewRemittance(record)}
+                    onClick={() => handleViewRemittance(r)}
                     style={{ borderRadius: 6 }}
                 >
-                    View
+                    {r.status === 'pending' ? 'Review' : 'View'}
                 </Button>
             ),
         },
@@ -1373,7 +1353,12 @@ const FuelProducts: React.FC = () => {
             label: (
                 <span style={{ color: 'var(--text-secondary)' }}>
                     <CheckOutlined style={{ color: 'var(--primary)' }} />{' '}
-                    Remittances ({remittances.length})
+                    Remittances ({remittances.length}){' '}
+                    {remittances.filter((r) => r.status === 'pending').length > 0 && (
+                        <Badge
+                            count={remittances.filter((r) => r.status === 'pending').length}
+                        />
+                    )}
                 </span>
             ),
             children: (
@@ -1386,6 +1371,19 @@ const FuelProducts: React.FC = () => {
                             flexWrap: 'wrap',
                         }}
                     >
+                        <Select
+                            style={{ width: 150 }}
+                            value={remFilters.status}
+                            onChange={(v) =>
+                                setRemFilters((p) => ({ ...p, status: v }))
+                            }
+                            options={[
+                                { value: '', label: 'All statuses' },
+                                { value: 'pending', label: 'Pending' },
+                                { value: 'approved', label: 'Approved' },
+                                { value: 'rejected', label: 'Rejected' },
+                            ]}
+                        />
                         <DatePicker
                             placeholder="Date From"
                             onChange={(date) =>
@@ -1903,118 +1901,13 @@ const FuelProducts: React.FC = () => {
                 </Form>
             </Modal>
 
-            {/* Remittance Detail Modal (read-only) */}
-            <Modal
-                title={
-                    <span style={{ color: 'var(--text-primary)' }}>
-                        Remittance Details
-                    </span>
-                }
-                open={remModalVisible}
-                onCancel={() => setRemModalVisible(false)}
-                footer={
-                    <Button onClick={() => setRemModalVisible(false)}>
-                        Close
-                    </Button>
-                }
-                width={600}
-            >
-                {selectedRemittance && (
-                    <div>
-                        {[
-                            [
-                                'Staff:',
-                                `${selectedRemittance.staff?.first_name} ${selectedRemittance.staff?.last_name}`,
-                                'var(--text-primary)',
-                            ],
-                            [
-                                'Email:',
-                                selectedRemittance.staff?.email,
-                                'var(--text-primary)',
-                            ],
-                            [
-                                'Remittance Date:',
-                                dayjs(selectedRemittance.remittance_date).format(
-                                    'YYYY-MM-DD',
-                                ),
-                                'var(--text-primary)',
-                            ],
-                            [
-                                'Claimed Amount:',
-                                formatCurrency(selectedRemittance.remitted_amount),
-                                'var(--success)',
-                            ],
-                            [
-                                'Actual Sales:',
-                                formatCurrency(
-                                    selectedRemittance.actual_sales_amount,
-                                ),
-                                'var(--text-primary)',
-                            ],
-                        ].map(([label, value, color]) => (
-                            <p key={label}>
-                                <strong style={{ color: 'var(--text-secondary)' }}>
-                                    {label}
-                                </strong>{' '}
-                                <span style={{ color }}>{value}</span>
-                            </p>
-                        ))}
-                        <p>
-                            <strong style={{ color: 'var(--text-secondary)' }}>
-                                Status:
-                            </strong>{' '}
-                            <Tag
-                                icon={<CheckCircleOutlined />}
-                                color="green"
-                                style={{ margin: 0 }}
-                            >
-                                AUTO-APPROVED
-                            </Tag>
-                        </p>
-                        {selectedRemittance.reviewed_at && (
-                            <p>
-                                <strong
-                                    style={{ color: 'var(--text-secondary)' }}
-                                >
-                                    Accepted At:
-                                </strong>{' '}
-                                <span style={{ color: 'var(--text-primary)' }}>
-                                    {dayjs(
-                                        selectedRemittance.reviewed_at,
-                                    ).format('YYYY-MM-DD HH:mm')}
-                                </span>
-                            </p>
-                        )}
-
-                        <div
-                            style={{
-                                marginTop: 16,
-                                padding: '10px 14px',
-                                background: 'rgba(16,185,129,0.08)',
-                                borderRadius: 8,
-                                border: '1px solid rgba(16,185,129,0.3)',
-                                fontSize: 12,
-                                color: 'var(--text-secondary)',
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: 8,
-                            }}
-                        >
-                            <CheckCircleOutlined
-                                style={{ color: 'var(--success)', marginTop: 2 }}
-                            />
-                            <span>
-                                This remittance was{' '}
-                                <strong style={{ color: 'var(--success)' }}>
-                                    automatically accepted
-                                </strong>{' '}
-                                when it was submitted. No manual review is
-                                required.
-                            </span>
-                        </div>
-                    </div>
-                )}
-            </Modal>
+            <RemittanceDetailModal
+                record={remModalVisible ? (selectedRemittance as any) : null}
+                baseUrl="/admin/remittances"
+                title="Fuel Remittance"
+                onClose={() => setRemModalVisible(false)}
+                onReviewed={fetchRemittances}
+            />
         </div>
     );
 };
