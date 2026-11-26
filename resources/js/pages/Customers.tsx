@@ -753,7 +753,18 @@ const Customers: React.FC = () => {
 
     const openCheckinFromApproved = (b: Booking) => {
         if (b.has_checked_in) { message.warning('Already checked in.'); return; }
-        setPrefillBooking(b); setCheckinModal(true);
+
+        checkinForm.resetFields();
+        checkinForm.setFieldsValue({
+            parking_slot_id: b.parking_slot_id,
+            check_in_date: dayjs(b.check_in_date),
+            check_in_time: dayjs(b.check_in_date),
+            expected_checkout_date: dayjs(b.check_out_date),
+            expected_checkout_time: dayjs(b.check_out_date),
+        });
+
+        setPrefillBooking(b);
+        setCheckinModal(true);
     };
 
     const resetCheckinForm = () => {
@@ -2151,35 +2162,60 @@ const Customers: React.FC = () => {
                         </>
                     )}
                     <Divider orientation="left">Parking Slot</Divider>
-                    <Form.Item name="parking_slot_id" label="Select Slot"
-                        rules={[{ required: true, message: 'Select a slot' }]}>
-                        <Select placeholder="Choose available slot" showSearch optionFilterProp="label"
-                            disabled={!!prefillBooking}
-                            options={availSlots.map((s) => ({
-                                value: s.id,
-                                label: `${s.slot_number} – ${fmtPHP(s.nightly_rate)}/night`,
-                            }))} />
-                    </Form.Item>
+
+                    {prefillBooking ? (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '10px 12px', borderRadius: 8, marginBottom: 12,
+                            background: 'var(--bg-surface-hover)',
+                            border: '1px solid var(--border-color)',
+                        }}>
+                            <CarOutlined style={{ color: 'var(--primary)' }} />
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                    Slot {prefillBooking.parking_slot?.slot_number ?? '–'}
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                                    {fmtPHP(prefillBooking.parking_slot?.nightly_rate)}/night • assigned to this booking
+                                </div>
+                            </div>
+                            <Tag color="green" style={{ margin: 0 }}>Booked</Tag>
+                        </div>
+                    ) : (
+                        <Form.Item name="parking_slot_id" label="Select Slot"
+                            rules={[{ required: true, message: 'Select a slot' }]}>
+                            <Select placeholder="Choose available slot" showSearch optionFilterProp="label"
+                                options={availSlots.map((s) => ({
+                                    value: s.id,
+                                    label: `${s.slot_number} – ${fmtPHP(s.nightly_rate)}/night`,
+                                }))} />
+                        </Form.Item>
+                    )}
+
                     <Divider orientation="left">Stay Duration</Divider>
                     <Row gutter={12}>
                         <Col span={6}>
                             <Form.Item name="check_in_date" label="Check-In Date" rules={[{ required: true }]}>
-                                <DatePicker style={{ width: '100%' }} format="MMM DD, YYYY" />
+                                <DatePicker style={{ width: '100%' }} format="MMM DD, YYYY"
+                                    disabled={!!prefillBooking} />
                             </Form.Item>
                         </Col>
                         <Col span={6}>
                             <Form.Item name="check_in_time" label="Check-In Time" rules={[{ required: true }]}>
-                                <TimePicker style={{ width: '100%' }} format="hh:mm A" use12Hours />
+                                <TimePicker style={{ width: '100%' }} format="hh:mm A" use12Hours
+                                    disabled={!!prefillBooking} />
                             </Form.Item>
                         </Col>
                         <Col span={6}>
                             <Form.Item name="expected_checkout_date" label="Check-Out Date" rules={[{ required: true }]}>
-                                <DatePicker style={{ width: '100%' }} format="MMM DD, YYYY" />
+                                <DatePicker style={{ width: '100%' }} format="MMM DD, YYYY"
+                                    disabled={!!prefillBooking} />
                             </Form.Item>
                         </Col>
                         <Col span={6}>
                             <Form.Item name="expected_checkout_time" label="Check-Out Time" rules={[{ required: true }]}>
-                                <TimePicker style={{ width: '100%' }} format="hh:mm A" use12Hours />
+                                <TimePicker style={{ width: '100%' }} format="hh:mm A" use12Hours
+                                    disabled={!!prefillBooking} />
                             </Form.Item>
                         </Col>
                     </Row>
